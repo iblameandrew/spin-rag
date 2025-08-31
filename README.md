@@ -1,3 +1,5 @@
+<img width="1024" height="1024" alt="image" src="https://github.com/user-attachments/assets/873489e9-28cc-404d-b9d0-231bf82dcc4a" />
+
 **SpinRAG** is a Retrieval-Augmented Generation (RAG) algorithm designed to act as the "intuitive," low-level brain for Large Language Model (LLM) pipelines. It provides fast, near-zero latency context and memory, complementing the high-level "thinking" of an LLM.
 
 The core idea is to move beyond static vector databases and create an evolving knowledge graph that continually re-organizes and forms new perspectives on existing data.
@@ -63,11 +65,13 @@ git clone https://github.com/iblameandrew/spin-rag.git
 cd spin-rag
 
 # Install the package and its dependencies
-pip install .```
+pip install - r requirements.txt
+
 
 ### 2. API Usage (Programmatic)
 
 Use `spinlm` directly in your Python projects for a powerful, dynamic RAG backend.
+```
 
 ```python
 from spinlm import SpinRAG
@@ -94,6 +98,6 @@ for log_entry in rag.get_verbose_log():
     print(log_entry)```
 
 
+```
 
-```bash
 

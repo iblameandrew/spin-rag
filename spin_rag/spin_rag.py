@@ -56,7 +56,7 @@ class SpinRAG:
             - TOP: The text is self-contained and does not refer to external concepts.
             - BOTTOM: The text is a higher composition of other data.
             - LEFT: The text by its structure contains partial definitions and is vague.
-            - RIGHT: The text by its structure can be used as a parameter to complete other data.
+            - RIGHT: The text by its structure can be used as a parameter to complete other data, but the text is not self contained.
 
             Text: "{text}"
 

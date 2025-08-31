@@ -71,7 +71,7 @@ pip install - r requirements.txt
 ### 2. API Usage (Programmatic)
 
 Use `spinlm` directly in your Python projects for a powerful, dynamic RAG backend.
-```bash
+```
 
 ```python
 from spinlm import SpinRAG
@@ -98,6 +98,6 @@ for log_entry in rag.get_verbose_log():
     print(log_entry)```
 
 
-```python
+```
 
 

@@ -14,10 +14,6 @@ from langchain_community.llms import Ollama
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.embeddings import HuggingFaceEmbeddings
 
-# ========================
-# Core Components & Enums
-# ========================
-
 class SpinType(Enum):
     TOP = "TOP"
     BOTTOM = "BOTTOM"
@@ -32,10 +28,6 @@ class Document:
     embeddings: Optional[np.ndarray] = None
     epoch_history: List[Dict] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
-
-# ========================
-# Main SpinRAG Class
-# ========================
 
 class SpinRAG:
     def __init__(self, file_path: str, n_epochs: int = 5, llm_model: str = "llama2", config: Optional[Dict] = None):
@@ -194,17 +186,8 @@ class SpinRAG:
         closest_doc, similarity = similarities[0]
         self._log(f"  - Closest TOP document: {closest_doc.id} (Similarity: {similarity:.4f})")
         
-        # Data acceleration
-        if query_spin == SpinType.BOTTOM:
-            self._log("  - ⚠️ High acceleration detected (Query is BOTTOM to closest TOP)!")
-            if len(similarities) > 1:
-                closest_doc, similarity = similarities[1]
-                self._log(f"  - Slingshot to next closest TOP document: {closest_doc.id}")
-            else:
-                self._log("  - Not enough TOP documents to perform slingshot.")
-
         # Apply production rules
-        response = self._apply_query_production_rules(query_text, query_spin, closest_doc)
+        response = self._apply_query_production_rules(query_text, query_spin, query_embedding, closest_doc)
         
         if reorganize_graph:
             self._log("  - Reorganizing graph with new data from query.")
@@ -212,36 +195,60 @@ class SpinRAG:
             new_doc = Document(id=new_doc_id, text=query_text, spin=query_spin, epoch_history=[{"epoch": "query", "spin": query_spin.value, "reason": "Query input"}])
             self.documents.append(new_doc)
             self.graph["nodes"][new_doc_id] = {"text": new_doc.text, "spin": new_doc.spin.value}
-            # A full re-evolution could be triggered here
-            # self.evolve_epochs() 
-            # self._generate_top_spin_embeddings()
 
         return response
 
-    def _apply_query_production_rules(self, query_text: str, query_spin: SpinType, top_doc: Document) -> str:
+    def _apply_query_production_rules(self, query_text: str, query_spin: SpinType, query_embedding: np.ndarray, top_doc: Document) -> str:
         if query_spin == SpinType.LEFT:
             # LEFT with TOP turns LEFT into RIGHT
             self._log("  - Applying rule: LEFT (query) + TOP (doc) -> RIGHT")
             new_text_prompt = f"Based on the self-contained concept '{top_doc.text}', complete the partial definition '{query_text}' into a structured parameter."
             return self.llm.predict(new_text_prompt)
+        
         elif query_spin == SpinType.RIGHT:
             # TOP has resonance with RIGHT and spans a BOTTOM
             self._log("  - Applying rule: RIGHT (query) + TOP (doc) -> BOTTOM")
             new_text_prompt = f"Combine the self-contained idea '{top_doc.text}' with the parameter structure '{query_text}' to create a new potential evolution or target."
             return self.llm.predict(new_text_prompt)
-        else:
-            # Default to closest match
-            return top_doc.text
+
+        elif query_spin == SpinType.BOTTOM:
+            # For a BOTTOM query, find the closest LEFT and RIGHT docs and see which interaction is stronger.
+            closest_left_doc, left_sim = self._find_closest_doc_of_spin(query_embedding, SpinType.LEFT)
+            closest_right_doc, right_sim = self._find_closest_doc_of_spin(query_embedding, SpinType.RIGHT)
+
+            if right_sim > left_sim and closest_right_doc:
+                # BOTTOM combines with RIGHT to create a TOP
+                self._log(f"  - Applying rule: BOTTOM (query) + RIGHT (doc: {closest_right_doc.id}, sim: {right_sim:.4f}) -> TOP")
+                prompt = f"Combine the evolutionary target '{query_text}' with the parameter structure '{closest_right_doc.text}' to create a new self-contained concept."
+                return self.llm.predict(prompt)
+            
+            elif left_sim > 0 and closest_left_doc:
+                # BOTTOM attracts LEFT to create a RIGHT
+                self._log(f"  - Applying rule: BOTTOM (query) + LEFT (doc: {closest_left_doc.id}, sim: {left_sim:.4f}) -> RIGHT")
+                prompt = f"Using the evolutionary target '{query_text}' as a goal, complete the partial definition '{closest_left_doc.text}' to describe a new parameter structure."
+                return self.llm.predict(prompt)
+
+        # Default to closest match if no other rules apply
+        return top_doc.text
+
+    def _find_closest_doc_of_spin(self, query_embedding: np.ndarray, spin_type: SpinType) -> Tuple[Optional[Document], float]:
+        """Finds the most similar document of a given spin type."""
+        target_docs = [doc for doc in self.documents if doc.spin == spin_type]
+        if not target_docs:
+            return None, 0.0
+
+        doc_embeddings = self.embeddings_model.embed_documents([doc.text for doc in target_docs])
+        
+        similarities = [np.dot(query_embedding, doc_emb) / (np.linalg.norm(query_embedding) * np.linalg.norm(doc_emb)) for doc_emb in doc_embeddings]
+        
+        max_sim_index = np.argmax(similarities)
+        return target_docs[max_sim_index], similarities[max_sim_index]
 
     def get_verbose_log(self) -> List[str]:
         return self.verbose_log
 
     def clear_log(self):
         self.verbose_log = []
-
-# ========================
-# Export Public API
-# ========================
 
 __all__ = [
     "SpinRAG",

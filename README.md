@@ -65,11 +65,12 @@ git clone https://github.com/iblameandrew/spin-rag.git
 cd spin-rag
 
 # Install the package and its dependencies
-pip install .```
+pip install .```bash
 
 ### 2. API Usage (Programmatic)
 
 Use `spinlm` directly in your Python projects for a powerful, dynamic RAG backend.
+```
 
 ```python
 from spinlm import SpinRAG
@@ -96,6 +97,6 @@ for log_entry in rag.get_verbose_log():
     print(log_entry)```
 
 
+```python
 
-```bash
 

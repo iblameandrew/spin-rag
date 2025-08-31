@@ -22,9 +22,9 @@ At its heart, SpinRAG treats each piece of data not as a static vector, but as a
 | Spin   | Icon | Description                                                               |
 | :----- | :--: | :------------------------------------------------------------------------ |
 | **TOP**    | ⬆️  | The data is self-contained and acts as a foundational concept.            |
-| **BOTTOM** | ⬇️  | The data is an evolutionary target or a potential future state.           |
-| **LEFT**   | ⬅️  | The data contains partial definitions or is an incomplete thought.        |
-| **RIGHT**  | ➡️  | The data has a parameter-like structure, ready to be combined with others. |
+| **BOTTOM** | ⬇️  | The data is in its structure a composition of other data.           |
+| **LEFT**   | ⬅️  | The data contains partial definitions or is vague.        |
+| **RIGHT**  | ➡️  | The data has a parameter-like structure, and can be combined with others.|
 
 #### Production Rules
 

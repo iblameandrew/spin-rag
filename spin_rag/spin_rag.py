@@ -53,9 +53,9 @@ class SpinRAG:
             template="""
             Analyze the following text and determine its spin type based on these definitions:
             - TOP: The text is self-contained and does not refer to external concepts.
-            - BOTTOM: The text represents a potential evolution or target for other data.
-            - LEFT: The text contains partial definitions or is incomplete.
-            - RIGHT: The text describes a parameter structure or a component that can be combined with other data.
+            - BOTTOM: The text is a higher composition of other data.
+            - LEFT: The text by its structure contains partial definitions and is vague.
+            - RIGHT: The text by its structure can be used as a parameter to complete other data, but the text is not self contained.
 
             Text: "{text}"
 

@@ -1,6 +1,6 @@
 import hashlib
 import numpy as np
-from typing import List, Dict, Tuple, Any, Optional
+from typing import List, Dict, Tuple, Any, Optional, Callable
 from dataclasses import dataclass, field
 from enum import Enum
 import json
@@ -29,12 +29,13 @@ class Document:
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 class SpinRAG:
-    def __init__(self, content: str, n_epochs: int = 5, llm_model: str = "llama2", config: Optional[Dict] = None):
+    def __init__(self, content: str, n_epochs: int = 5, llm_model: str = "llama2", config: Optional[Dict] = None, logger_callback: Optional[Callable[[str], None]] = None):
         self.content = content
         self.n_epochs = n_epochs
         self.config = config or {}
         self.llm = Ollama(model=llm_model)
         self.embeddings_model = OllamaEmbeddings(model=llm_model)
+        self.logger_callback = logger_callback
 
         # Core state
         self.documents: List[Document] = []
@@ -44,7 +45,12 @@ class SpinRAG:
         self.initialize_index()
 
     def _log(self, message: str):
-        print(message)
+        # Use the callback to send the log to the frontend if it exists
+        if self.logger_callback:
+            self.logger_callback(message)
+        else:
+            # Fallback to printing if no callback is provided
+            print(message)
         self.verbose_log.append(message)
 
     def _get_spin(self, text: str) -> SpinType:
@@ -133,7 +139,7 @@ class SpinRAG:
                         new_doc_id = f"doc_{uuid.uuid4()}"
                         new_doc = Document(id=new_doc_id, text=new_text, spin=SpinType.BOTTOM, epoch_history=[{"epoch": epoch, "spin": SpinType.BOTTOM.value, "reason": "TOP+RIGHT resonance"}])
                         new_documents.append(new_doc)
-                        self._log(f"    - Spanned new document {new_doc_id} (BOTTOM)")
+                        self._log(f"    - Spanned new document {new_text} (BOTTOM)")
 
                     # LEFT with TOP turns LEFT into RIGHT
                     if doc1.spin == SpinType.LEFT and doc2.spin == SpinType.TOP:
@@ -149,7 +155,7 @@ class SpinRAG:
                         new_doc_id = f"doc_{uuid.uuid4()}"
                         new_doc = Document(id=new_doc_id, text=new_text, spin=SpinType.TOP, epoch_history=[{"epoch": epoch, "spin": SpinType.TOP.value, "reason": "BOTTOM+RIGHT combination"}])
                         new_documents.append(new_doc)
-                        self._log(f"    - Created new document {new_doc_id} (TOP)")
+                        self._log(f"    - Created new document {new_text} (TOP)")
             
             self.documents.extend(new_documents)
             for doc in self.documents:

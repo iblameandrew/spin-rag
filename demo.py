@@ -77,16 +77,22 @@ def update_logs(n):
     return [html.P(log, style={'margin': 0, 'fontSize': '12px'}) for log in log_stream]
 
 def run_rag_initialization(content_string, epochs, model):
-    """Initializes the RAG system using the in-memory string content."""
+    """Initializes the RAG system and streams logs to the global log_stream."""
     global rag, log_stream
-    log_stream.append("Starting RAG initialization from memory...")
     
-    # The content is passed directly to the SpinRAG constructor
-    rag = SpinRAG(content=content_string, n_epochs=epochs, llm_model=model)
+    # This function will be called by the SpinRAG instance to log messages
+    def stream_log_to_dashboard(message: str):
+        log_stream.append(message)
+
+    stream_log_to_dashboard("Starting RAG initialization from memory...")
     
-    log_stream.extend(rag.get_verbose_log())
-    rag.clear_log()
-    log_stream.append("RAG Initialized and Ready!")
+    # Pass the logger function to the SpinRAG constructor
+    rag = SpinRAG(content=content_string, n_epochs=epochs, llm_model=model, logger_callback=stream_log_to_dashboard)
+    
+    # The get_verbose_log and clear_log calls are no longer needed here
+    # as logs are streamed in real-time.
+    
+    stream_log_to_dashboard("RAG Initialized and Ready!")
 
 @app.callback(
     Output("init-rag-button", "disabled"),
@@ -122,9 +128,13 @@ def update_chat(n_clicks, user_input, chat_history, model):
         chat_history.append({"user": user_input})
         
         if rag:
+            # The rag object already has the logger configured, so rag.query()
+            # will automatically stream its logs to the dashboard.
             rag_response = rag.query(user_input)
-            log_stream.extend(rag.get_verbose_log())
-            rag.clear_log()
+            
+            # These are no longer necessary because logs are streamed via the callback.
+            # log_stream.extend(rag.get_verbose_log())
+            # rag.clear_log()
             
             llm = Ollama(model=model)
             prompt = f"Using the following context, answer the user's question.\n\nContext: {rag_response}\n\nQuestion: {user_input}"

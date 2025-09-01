@@ -37,7 +37,7 @@ app.layout = dbc.Container(fluid=True, children=[
                         },
                         multiple=False
                     ),
-                    dbc.Select(id="llm-model-select", options=[{"label": m, "value": m} for m in ["qwen3:1.7b", "hf.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF:Qwen3-30B-A3B-Instruct-2507-UD-IQ1_M.gguf"]], value="qwen3:1.7b"),
+                    dbc.Select(id="llm-model-select", options=[{"label": m, "value": m} for m in ["qwen3:1.7b", "qwen3:4b-instruct-2507-q4_K_M", "hf.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF:Qwen3-30B-A3B-Instruct-2507-UD-IQ1_M.gguf"]], value="qwen3:1.7b"),
                     dbc.Input(id="epochs-input", type="number", value=3, placeholder="Epochs"),
                     dbc.Button("Initialize RAG", id="init-rag-button", color="primary", className="mt-2 w-100"),
                 ])

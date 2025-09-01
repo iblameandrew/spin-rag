@@ -57,19 +57,21 @@ class SpinRAG:
         prompt = PromptTemplate(
             input_variables=["text"],
             template="""
-            Analyze the following text and determine its spin type based on these definitions:
-            - TOP: The text is self-contained and does not semantically refer to external concepts.
-            - BOTTOM: The text is a higher semantic composition of other concepts.
-            - LEFT: The text by its semantic composition contains partial definitions and is vague.
-            - RIGHT: The text by its semantic composition can be used as a parameter to complete other data, but the text is not self contained.
+            You are a semantic parser. Your task is to classify text by measure of how complex is.
 
+            - TOP: The text is linguistically simple and refers no specialized knowledge.
+            - BOTTOM: The text referes specialized knowledge.
+            - LEFT: The text is incomplete and is missing some information to be understood.
+            - RIGHT: The text is a definition.
+            
             Text: "{text}"
 
-            Based on the definitions, the spin type is:
+            Answer only the type. Based on the definitions, the type is:
             """
         )
         chain = LLMChain(llm=self.llm, prompt=prompt)
         response = chain.run(text=text)
+        print(response)
         
         if "TOP" in response:
             return SpinType.TOP
@@ -93,7 +95,7 @@ class SpinRAG:
         for i, text in enumerate(texts):
             doc_id = f"doc_{uuid.uuid4()}"
             spin = self._get_spin(text)
-            self._log(f"📄 Chunk {i}: Assigning initial spin -> {spin.value}")
+            self._log(f"📄 Chunk {text}: Assigning initial spin -> {spin.value}")
             
             doc = Document(
                 id=doc_id,

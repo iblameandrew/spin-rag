@@ -11,7 +11,6 @@ The core idea is to move beyond static vector databases and create an evolving k
 -   🤖 **Small Language Model Core**: Uses efficient SLMs (via Ollama) for dynamic spin assignment and rule processing.
 -   🔗 **LangChain Integration**: Seamlessly fits into modern LLM workflows.
 -   🌐 **Interactive Demo**: A Dash-based web UI to visualize the algorithm's verbose processes and chat with your indexed data.
--   🚀 **High-Acceleration Querying**: A unique "slingshot" mechanism for queries that are conceptually distant from their closest match.
 
 ## 💡 The "Spin" Concept Explained
 
@@ -26,15 +25,6 @@ At its heart, SpinRAG treats each piece of data not as a static vector, but as a
 | **LEFT**   | ⬅️  | The data contains partial definitions or is vague.        |
 | **RIGHT**  | ➡️  | The data has a parameter-like structure, and can be combined with others.|
 
-#### Production Rules
-
-These spins interact based on a set of production rules that drive the graph's evolution:
-
-1.  **Attraction**: `TOP` attracts `LEFT`; `BOTTOM` attracts `LEFT`.
-2.  **Repulsion**: `TOP` repels `BOTTOM`; `LEFT` repels `RIGHT`.
-3.  **Transformation**: `LEFT` + `TOP` interaction turns the `LEFT` chunk into a `RIGHT` chunk.
-4.  **Combination**: `BOTTOM` + `RIGHT` combine to create a new `TOP` chunk.
-5.  **Resonance**: `TOP` + `RIGHT` resonate to span a new `BOTTOM` chunk.
 
 ## ⚙️ How It Works: The Lifecycle
 

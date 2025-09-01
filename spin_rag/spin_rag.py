@@ -59,8 +59,8 @@ class SpinRAG:
             template="""
             You are a semantic parser. Your task is to classify text by measure of how complex is.
 
-            - TOP: The text is linguistically simple and refers no specialized knowledge.
-            - BOTTOM: The text referes specialized knowledge.
+            - TOP: The text is simple.
+            - BOTTOM: The text is complex.
             - LEFT: The text is incomplete and is missing some information to be understood.
             - RIGHT: The text is a definition.
             
@@ -70,8 +70,8 @@ class SpinRAG:
             """
         )
         chain = LLMChain(llm=self.llm, prompt=prompt)
-        response = chain.run(text=text)
-        print(response)
+        response = chain.invoke(input={"text": text})
+        response = response["text"]
         
         if "TOP" in response:
             return SpinType.TOP
@@ -116,70 +116,89 @@ class SpinRAG:
 
     def evolve_epochs(self):
         self._log(f"🔄 Starting evolution for {self.n_epochs} epochs...")
+
+        # Segregate initial documents. LEFT/RIGHT docs are catalysts, TOP/BOTTOM are the evolving base.
+        left_catalysts = [doc for doc in self.documents if doc.spin == SpinType.LEFT]
+        right_catalysts = [doc for doc in self.documents if doc.spin == SpinType.RIGHT]
+        
+        current_top_docs = [doc for doc in self.documents if doc.spin == SpinType.TOP]
+        current_bottom_docs = [doc for doc in self.documents if doc.spin == SpinType.BOTTOM]
+
         for epoch in range(1, self.n_epochs + 1):
             self._log(f"\nEpoch {epoch}:")
-            new_documents = []
-            for i in range(len(self.documents)):
-                for j in range(len(self.documents)):
-                    if i == j:
-                        continue
-
-                    doc1 = self.documents[i]
-                    doc2 = self.documents[j]
-
-                    # TOP repels BOTTOM, LEFT repels RIGHT
-                    if (doc1.spin == SpinType.TOP and doc2.spin == SpinType.BOTTOM) or \
-                       (doc1.spin == SpinType.LEFT and doc2.spin == SpinType.RIGHT):
-                        self._log(f"  - Repulsion between {doc1.id} ({doc1.spin.value}) and {doc2.id} ({doc2.spin.value})")
-
-                    if doc1.spin == SpinType.TOP and doc2.spin == SpinType.RIGHT:
-
-                        self._log(f"  - Resonance: {doc1.id} (TOP) with {doc2.id} (RIGHT) -> TOP")
-                        new_text_prompt = f"Combine the self-contained idea '{doc1.text}' with the parameter structure '{doc2.text}' to create a new self contained definition. Answer only with the new concept."
-                        new_text = self.llm.predict(new_text_prompt)
-                        new_doc_id = f"doc_{uuid.uuid4()}"
-                        new_doc = Document(id=new_doc_id, text=new_text, spin=SpinType.TOP, epoch_history=[{"epoch": epoch, "spin": SpinType.TOP.value, "reason": "TOP+RIGHT resonance"}]) 
-                        new_documents.append(new_doc)
-                        self._log(f"    - Spanned new document {new_text} (TOP)")
-
-                    if doc1.spin == SpinType.LEFT and doc2.spin == SpinType.TOP:
-
-                        self._log(f"  - Transformation: {doc1.id} (LEFT) with {doc2.id} (TOP) -> TOP")
-                        new_text_prompt = f"Combine the self-contained idea '{doc1.text}' with the incomplete data '{doc2.text}' to create a new self-contained definition. Answer only with the new concept."
-                        new_text = self.llm.predict(new_text_prompt)
-                        new_doc_id = f"doc_{uuid.uuid4()}"
-                        new_doc = Document(id=new_doc_id, text=new_text, spin=SpinType.TOP, epoch_history=[{"epoch": epoch, "spin": SpinType.TOP.value, "reason": "LEFT+TOP transformation"}])
-                        new_documents.append(new_doc)
-                        self._log(f"    - Created new document {new_text} (TOP)")
-
-                    if doc1.spin == SpinType.BOTTOM and doc2.spin == SpinType.RIGHT:
-                        self._log(f"  - Combination: {doc1.id} (BOTTOM) with {doc2.id} (RIGHT) -> TOP")
-                        new_text_prompt = f"Combine the complex concept '{doc1.text}' with the parameter structure '{doc2.text}' to create a new short self-contained concept. Answer only with the new concept."
-                        new_text = self.llm.predict(new_text_prompt)
-                        new_doc_id = f"doc_{uuid.uuid4()}"
-                        new_doc = Document(id=new_doc_id, text=new_text, spin=SpinType.TOP, epoch_history=[{"epoch": epoch, "spin": SpinType.TOP.value, "reason": "BOTTOM+RIGHT combination"}])
-                        new_documents.append(new_doc)
-                        self._log(f"    - Created new document {new_text} (TOP)")
-
-                    if doc1.spin == SpinType.BOTTOM and doc2.spin == SpinType.LEFT:
-
-                        self._log(f"  - Combination: {doc1.id} (BOTTOM) with {doc2.id} (LEFT) -> BOTTOM")
-                        new_text_prompt = f"Combine the complex concept '{doc1.text}' with the incomplete '{doc2.text}' to create a new more complex concept. Answer only with the new concept."
-                        new_text = self.llm.predict(new_text_prompt)
-                        new_doc_id = f"doc_{uuid.uuid4()}"
-                        new_doc = Document(id=new_doc_id, text=new_text, spin=SpinType.BOTTOM, epoch_history=[{"epoch": epoch, "spin": SpinType.BOTTOM.value, "reason": "BOTTOM+RIGHT combination"}])
-                        new_documents.append(new_doc)
-                        self._log(f"    - Created new document {new_text} (BOTTOM)")
             
+            # These will hold the documents produced in this epoch.
+            next_gen_top_docs = []
+            next_gen_bottom_docs = []
+
+            # --- Interaction Phase ---
+            # All LEFT/RIGHT catalysts interact with the current generation of TOP/BOTTOM documents.
+
+            # Rule: LEFT (catalyst) + TOP (base) -> new TOP
+            for left_doc in left_catalysts:
+                for top_doc in current_top_docs:
+                    self._log(f"  - Transformation: {left_doc.id} (LEFT) with {top_doc.id} (TOP) -> TOP")
+                    new_text_prompt = f"Combine the self-contained idea '{top_doc.text}' with the incomplete data '{left_doc.text}' to create a new self-contained definition. Answer only with the new concept."
+                    new_text = self.llm.predict(new_text_prompt)
+                    new_doc_id = f"doc_{uuid.uuid4()}"
+                    new_doc = Document(id=new_doc_id, text=new_text, spin=SpinType.TOP, epoch_history=[{"epoch": epoch, "spin": SpinType.TOP.value, "reason": "LEFT+TOP transformation"}])
+                    next_gen_top_docs.append(new_doc)
+                    self._log(f"    - Created new document {new_text} (TOP)")
+
+            # Rule: RIGHT (catalyst) + TOP (base) -> new TOP
+            for right_doc in right_catalysts:
+                for top_doc in current_top_docs:
+                    self._log(f"  - Resonance: {top_doc.id} (TOP) with {right_doc.id} (RIGHT) -> TOP")
+                    new_text_prompt = f"Combine the self-contained idea '{top_doc.text}' with the parameter structure '{right_doc.text}' to create a new self contained definition. Answer only with the new concept."
+                    new_text = self.llm.predict(new_text_prompt)
+                    new_doc_id = f"doc_{uuid.uuid4()}"
+                    new_doc = Document(id=new_doc_id, text=new_text, spin=SpinType.TOP, epoch_history=[{"epoch": epoch, "spin": SpinType.TOP.value, "reason": "TOP+RIGHT resonance"}]) 
+                    next_gen_top_docs.append(new_doc)
+                    self._log(f"    - Spanned new document {new_text} (TOP)")
+
+            # Rule: RIGHT (catalyst) + BOTTOM (base) -> new TOP
+            for right_doc in right_catalysts:
+                for bottom_doc in current_bottom_docs:
+                    self._log(f"  - Combination: {bottom_doc.id} (BOTTOM) with {right_doc.id} (RIGHT) -> TOP")
+                    new_text_prompt = f"Combine the complex concept '{bottom_doc.text}' with the parameter structure '{right_doc.text}' to create a new short self-contained concept. Answer only with the new concept."
+                    new_text = self.llm.predict(new_text_prompt)
+                    new_doc_id = f"doc_{uuid.uuid4()}"
+                    new_doc = Document(id=new_doc_id, text=new_text, spin=SpinType.TOP, epoch_history=[{"epoch": epoch, "spin": SpinType.TOP.value, "reason": "BOTTOM+RIGHT combination"}])
+                    next_gen_top_docs.append(new_doc)
+                    self._log(f"    - Created new document {new_text} (TOP)")
+
+            # Rule: LEFT (catalyst) + BOTTOM (base) -> new BOTTOM
+            for left_doc in left_catalysts:
+                for bottom_doc in current_bottom_docs:
+                    self._log(f"  - Combination: {bottom_doc.id} (BOTTOM) with {left_doc.id} (LEFT) -> BOTTOM")
+                    new_text_prompt = f"Combine the complex concept '{bottom_doc.text}' with the incomplete '{left_doc.text}' to create a new more complex concept. Answer only with the new concept."
+                    new_text = self.llm.predict(new_text_prompt)
+                    new_doc_id = f"doc_{uuid.uuid4()}"
+                    new_doc = Document(id=new_doc_id, text=new_text, spin=SpinType.BOTTOM, epoch_history=[{"epoch": epoch, "spin": SpinType.BOTTOM.value, "reason": "BOTTOM+LEFT combination"}])
+                    next_gen_bottom_docs.append(new_doc)
+                    self._log(f"    - Created new document {new_text} (BOTTOM)")
             
-            self.documents.extend(new_documents)
-            for doc in self.documents:
+            # Check if any evolution occurred.
+            if not next_gen_top_docs and not next_gen_bottom_docs:
+                self._log("  - No new documents produced in this epoch. Halting evolution.")
+                break
+
+            # Add the newly created generation to the global list and the graph.
+            new_docs_this_epoch = next_gen_top_docs + next_gen_bottom_docs
+            self.documents.extend(new_docs_this_epoch)
+            for doc in new_docs_this_epoch:
                 self.graph["nodes"][doc.id] = {
                     "text": doc.text,
                     "spin": doc.spin.value,
                     "epoch_history": doc.epoch_history
                 }
+            
+            # The next generation becomes the current generation for the next epoch.
+            current_top_docs = next_gen_top_docs
+            current_bottom_docs = next_gen_bottom_docs
+
         self._log("\n✅ Evolution complete.")
+
 
     def _generate_top_spin_embeddings(self):
         self._log("🧠 Generating embeddings for TOP spin documents...")
@@ -221,13 +240,13 @@ class SpinRAG:
             # LEFT with TOP turns LEFT into RIGHT
             self._log("  - Applying rule: LEFT (query) + TOP (doc) -> RIGHT")
             new_text_prompt = f"Based on the self-contained concept '{top_doc.text}', complete the partial definition '{query_text}' into a structured parameter."
-            return self.llm.predict(new_text_prompt)
+            return self.llm.invoke(new_text_prompt)
         
         elif query_spin == SpinType.RIGHT:
             # TOP has resonance with RIGHT and spans a BOTTOM
             self._log("  - Applying rule: RIGHT (query) + TOP (doc) -> BOTTOM")
             new_text_prompt = f"Combine the self-contained idea '{top_doc.text}' with the parameter structure '{query_text}' to create a new potential evolution or target."
-            return self.llm.predict(new_text_prompt)
+            return self.llm.invoke(new_text_prompt)
 
         elif query_spin == SpinType.BOTTOM:
             # For a BOTTOM query, find the closest LEFT and RIGHT docs and see which interaction is stronger.
@@ -238,13 +257,13 @@ class SpinRAG:
                 # BOTTOM combines with RIGHT to create a TOP
                 self._log(f"  - Applying rule: BOTTOM (query) + RIGHT (doc: {closest_right_doc.id}, sim: {right_sim:.4f}) -> TOP")
                 prompt = f"Combine the evolutionary target '{query_text}' with the parameter structure '{closest_right_doc.text}' to create a new self-contained concept."
-                return self.llm.predict(prompt)
+                return self.llm.invoke(prompt)
             
             elif left_sim > 0 and closest_left_doc:
                 # BOTTOM attracts LEFT to create a RIGHT
                 self._log(f"  - Applying rule: BOTTOM (query) + LEFT (doc: {closest_left_doc.id}, sim: {left_sim:.4f}) -> RIGHT")
                 prompt = f"Using the evolutionary target '{query_text}' as a goal, complete the partial definition '{closest_left_doc.text}' to describe a new parameter structure."
-                return self.llm.predict(prompt)
+                return self.llm.invoke(prompt)
 
         # Default to closest match if no other rules apply
         return top_doc.text

@@ -1,0 +1,12 @@
+**/__pycache__/
+**/.pytest_cache/
+*.pyc
+*.json
+*.log
+*.~
+*.un~
+*.csv
+.venv/
+*.env
+*.mmd
+

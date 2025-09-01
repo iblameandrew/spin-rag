@@ -1,11 +1,11 @@
-# app.py
 import dash
 from dash import dcc, html, Input, Output, State
 import dash_bootstrap_components as dbc
-from spinlm import SpinRAG
+from spin_rag.spin_rag import SpinRAG
 from langchain_community.llms import Ollama
 import threading
-import time
+import base64
+import io
 
 # --- App Initialization ---
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.CYBORG])
@@ -76,14 +76,14 @@ def update_logs(n):
     global log_stream
     return [html.P(log, style={'margin': 0, 'fontSize': '12px'}) for log in log_stream]
 
-def run_rag_initialization(contents, epochs, model):
+def run_rag_initialization(content_string, epochs, model):
+    """Initializes the RAG system using the in-memory string content."""
     global rag, log_stream
-    log_stream.append("Starting RAG initialization...")
-    # For simplicity, we'll write the uploaded content to a temp file
-    with open("temp_data.txt", "w") as f:
-        f.write(contents)
+    log_stream.append("Starting RAG initialization from memory...")
     
-    rag = SpinRAG(file_path="temp_data.txt", n_epochs=epochs, llm_model=model)
+    # The content is passed directly to the SpinRAG constructor
+    rag = SpinRAG(content=content_string, n_epochs=epochs, llm_model=model)
+    
     log_stream.extend(rag.get_verbose_log())
     rag.clear_log()
     log_stream.append("RAG Initialized and Ready!")
@@ -98,7 +98,13 @@ def run_rag_initialization(contents, epochs, model):
 )
 def initialize_rag(n_clicks, contents, epochs, model):
     if n_clicks and contents:
-        threading.Thread(target=run_rag_initialization, args=(contents.split(',')[1], epochs, model)).start()
+        # Decode the base64 string from the upload component
+        content_type, content_string = contents.split(',')
+        decoded = base64.b64decode(content_string)
+        text_content = decoded.decode('utf-8')
+        
+        # Start the initialization in a separate thread to not block the UI
+        threading.Thread(target=run_rag_initialization, args=(text_content, epochs, model)).start()
         return True
     return False
 
@@ -143,4 +149,4 @@ def display_chat(chat_history):
     return history
 
 if __name__ == '__main__':
-    app.run_server(debug=True)
+    app.run(debug=True)

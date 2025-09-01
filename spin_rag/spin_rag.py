@@ -1,4 +1,3 @@
-# spinlm.py
 import hashlib
 import numpy as np
 from typing import List, Dict, Tuple, Any, Optional
@@ -11,8 +10,8 @@ from pathlib import Path
 from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain
 from langchain_community.llms import Ollama
+from langchain_ollama import OllamaEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.embeddings import HuggingFaceEmbeddings
 
 class SpinType(Enum):
     TOP = "TOP"
@@ -30,12 +29,12 @@ class Document:
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 class SpinRAG:
-    def __init__(self, file_path: str, n_epochs: int = 5, llm_model: str = "llama2", config: Optional[Dict] = None):
-        self.file_path = Path(file_path)
+    def __init__(self, content: str, n_epochs: int = 5, llm_model: str = "llama2", config: Optional[Dict] = None):
+        self.content = content
         self.n_epochs = n_epochs
         self.config = config or {}
         self.llm = Ollama(model=llm_model)
-        self.embeddings_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+        self.embeddings_model = OllamaEmbeddings(model=llm_model)
 
         # Core state
         self.documents: List[Document] = []
@@ -77,12 +76,10 @@ class SpinRAG:
         return SpinType.TOP
 
     def initialize_index(self):
-        self._log(f"🚀 Initializing SpinRAG index from: {self.file_path}")
-        if not self.file_path.exists():
-            raise FileNotFoundError(f"File not found: {self.file_path}")
-
-        with open(self.file_path, 'r') as f:
-            raw_text = f.read()
+        self._log(f"🚀 Initializing SpinRAG index from in-memory content.")
+        
+        # Use the content string directly instead of reading a file
+        raw_text = self.content
 
         splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
         texts = splitter.split_text(raw_text)

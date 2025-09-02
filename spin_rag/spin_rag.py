@@ -114,6 +114,21 @@ class SpinRAG:
         self._generate_top_spin_embeddings()
         self._log("✅ Index initialization complete.")
 
+    def _find_closest_doc(self, catalyst_doc: Document, base_docs: List[Document]) -> Optional[Document]:
+        if not base_docs:
+            return None
+
+        catalyst_embedding = self.embeddings_model.embed_query(catalyst_doc.text)
+        base_embeddings = self.embeddings_model.embed_documents([doc.text for doc in base_docs])
+
+        similarities = [np.dot(catalyst_embedding, base_emb) / (np.linalg.norm(catalyst_embedding) * np.linalg.norm(base_emb)) for base_emb in base_embeddings]
+        
+        if not similarities:
+            return None
+
+        closest_index = np.argmax(similarities)
+        return base_docs[closest_index]
+
     def evolve_epochs(self):
         self._log(f"🔄 Starting evolution for {self.n_epochs} epochs...")
 
@@ -132,14 +147,15 @@ class SpinRAG:
             next_gen_bottom_docs = []
 
             # --- Interaction Phase ---
-            # All LEFT/RIGHT catalysts interact with the current generation of TOP/BOTTOM documents.
+            # All LEFT/RIGHT catalysts interact with the metrically closest TOP/BOTTOM documents.
 
             # Rule: LEFT (catalyst) + TOP (base) -> new TOP
             for left_doc in left_catalysts:
-                for top_doc in current_top_docs:
-                    self._log(f"  - Transformation: {left_doc.id} (LEFT) with {top_doc.id} (TOP) -> TOP")
-                    new_text_prompt = f"Combine the self-contained idea '{top_doc.text}' with the incomplete data '{left_doc.text}' to create a new self-contained definition. Answer only with the new concept."
-                    new_text = self.llm.predict(new_text_prompt)
+                closest_top_doc = self._find_closest_doc(left_doc, current_top_docs)
+                if closest_top_doc:
+                    self._log(f"  - Transformation: {left_doc.id} (LEFT) with closest {closest_top_doc.id} (TOP) -> TOP")
+                    new_text_prompt = f"Combine the self-contained idea '{closest_top_doc.text}' with the incomplete data '{left_doc.text}' to create a new self-contained definition. Answer only with the new concept."
+                    new_text = self.llm.invoke(new_text_prompt)
                     new_doc_id = f"doc_{uuid.uuid4()}"
                     new_doc = Document(id=new_doc_id, text=new_text, spin=SpinType.TOP, epoch_history=[{"epoch": epoch, "spin": SpinType.TOP.value, "reason": "LEFT+TOP transformation"}])
                     next_gen_top_docs.append(new_doc)
@@ -147,10 +163,11 @@ class SpinRAG:
 
             # Rule: RIGHT (catalyst) + TOP (base) -> new TOP
             for right_doc in right_catalysts:
-                for top_doc in current_top_docs:
-                    self._log(f"  - Resonance: {top_doc.id} (TOP) with {right_doc.id} (RIGHT) -> TOP")
-                    new_text_prompt = f"Combine the self-contained idea '{top_doc.text}' with the parameter structure '{right_doc.text}' to create a new self contained definition. Answer only with the new concept."
-                    new_text = self.llm.predict(new_text_prompt)
+                closest_top_doc = self._find_closest_doc(right_doc, current_top_docs)
+                if closest_top_doc:
+                    self._log(f"  - Resonance: {closest_top_doc.id} (TOP) with {right_doc.id} (RIGHT) -> TOP")
+                    new_text_prompt = f"Combine the self-contained idea '{closest_top_doc.text}' with the parameter structure '{right_doc.text}' to create a new self contained definition. Answer only with the new concept."
+                    new_text = self.llm.invoke(new_text_prompt)
                     new_doc_id = f"doc_{uuid.uuid4()}"
                     new_doc = Document(id=new_doc_id, text=new_text, spin=SpinType.TOP, epoch_history=[{"epoch": epoch, "spin": SpinType.TOP.value, "reason": "TOP+RIGHT resonance"}]) 
                     next_gen_top_docs.append(new_doc)
@@ -158,10 +175,11 @@ class SpinRAG:
 
             # Rule: RIGHT (catalyst) + BOTTOM (base) -> new TOP
             for right_doc in right_catalysts:
-                for bottom_doc in current_bottom_docs:
-                    self._log(f"  - Combination: {bottom_doc.id} (BOTTOM) with {right_doc.id} (RIGHT) -> TOP")
-                    new_text_prompt = f"Combine the complex concept '{bottom_doc.text}' with the parameter structure '{right_doc.text}' to create a new short self-contained concept. Answer only with the new concept."
-                    new_text = self.llm.predict(new_text_prompt)
+                closest_bottom_doc = self._find_closest_doc(right_doc, current_bottom_docs)
+                if closest_bottom_doc:
+                    self._log(f"  - Combination: {closest_bottom_doc.id} (BOTTOM) with {right_doc.id} (RIGHT) -> TOP")
+                    new_text_prompt = f"Combine the complex concept '{closest_bottom_doc.text}' with the parameter structure '{right_doc.text}' to create a new short self-contained concept. Answer only with the new concept."
+                    new_text = self.llm.invoke(new_text_prompt)
                     new_doc_id = f"doc_{uuid.uuid4()}"
                     new_doc = Document(id=new_doc_id, text=new_text, spin=SpinType.TOP, epoch_history=[{"epoch": epoch, "spin": SpinType.TOP.value, "reason": "BOTTOM+RIGHT combination"}])
                     next_gen_top_docs.append(new_doc)
@@ -169,10 +187,11 @@ class SpinRAG:
 
             # Rule: LEFT (catalyst) + BOTTOM (base) -> new BOTTOM
             for left_doc in left_catalysts:
-                for bottom_doc in current_bottom_docs:
-                    self._log(f"  - Combination: {bottom_doc.id} (BOTTOM) with {left_doc.id} (LEFT) -> BOTTOM")
-                    new_text_prompt = f"Combine the complex concept '{bottom_doc.text}' with the incomplete '{left_doc.text}' to create a new more complex concept. Answer only with the new concept."
-                    new_text = self.llm.predict(new_text_prompt)
+                closest_bottom_doc = self._find_closest_doc(left_doc, current_bottom_docs)
+                if closest_bottom_doc:
+                    self._log(f"  - Combination: {closest_bottom_doc.id} (BOTTOM) with {left_doc.id} (LEFT) -> BOTTOM")
+                    new_text_prompt = f"Combine the complex concept '{closest_bottom_doc.text}' with the incomplete '{left_doc.text}' to create a new more complex concept. Answer only with the new concept."
+                    new_text = self.llm.invoke(new_text_prompt)
                     new_doc_id = f"doc_{uuid.uuid4()}"
                     new_doc = Document(id=new_doc_id, text=new_text, spin=SpinType.BOTTOM, epoch_history=[{"epoch": epoch, "spin": SpinType.BOTTOM.value, "reason": "BOTTOM+LEFT combination"}])
                     next_gen_bottom_docs.append(new_doc)
@@ -194,8 +213,9 @@ class SpinRAG:
                 }
             
             # The next generation becomes the current generation for the next epoch.
-            current_top_docs = next_gen_top_docs
-            current_bottom_docs = next_gen_bottom_docs
+            current_top_docs.extend(next_gen_top_docs)
+            current_bottom_docs.extend(next_gen_bottom_docs)
+
 
         self._log("\n✅ Evolution complete.")
 
@@ -218,9 +238,9 @@ class SpinRAG:
             return "No TOP spin documents available for querying."
 
         similarities = [(doc, np.dot(query_embedding, doc.embeddings) / (np.linalg.norm(query_embedding) * np.linalg.norm(doc.embeddings))) for doc in top_spin_docs]
-        similarities.sort(key=lambda x: x[1], reverse=True)
+        similarities.sort(key=lambda x: x, reverse=True)
         
-        closest_doc, similarity = similarities[0]
+        closest_doc, similarity = similarities
         self._log(f"  - Closest TOP document: {closest_doc.id} (Similarity: {similarity:.4f})")
         
         # Apply production rules

@@ -159,6 +159,9 @@ class SpinRAG:
                     new_doc_id = f"doc_{uuid.uuid4()}"
                     new_doc = Document(id=new_doc_id, text=new_text, spin=SpinType.TOP, epoch_history=[{"epoch": epoch, "spin": SpinType.TOP.value, "reason": "LEFT+TOP transformation"}])
                     next_gen_top_docs.append(new_doc)
+                    # Add edges to the graph
+                    self.graph["edges"].append({"source": left_doc.id, "target": new_doc_id, "label": "transforms"})
+                    self.graph["edges"].append({"source": closest_top_doc.id, "target": new_doc_id, "label": "transforms"})
                     self._log(f"    - Created new document {new_text} (TOP)")
 
             # Rule: RIGHT (catalyst) + TOP (base) -> new TOP
@@ -171,6 +174,9 @@ class SpinRAG:
                     new_doc_id = f"doc_{uuid.uuid4()}"
                     new_doc = Document(id=new_doc_id, text=new_text, spin=SpinType.TOP, epoch_history=[{"epoch": epoch, "spin": SpinType.TOP.value, "reason": "TOP+RIGHT resonance"}]) 
                     next_gen_top_docs.append(new_doc)
+                    # Add edges to the graph
+                    self.graph["edges"].append({"source": right_doc.id, "target": new_doc_id, "label": "resonance"})
+                    self.graph["edges"].append({"source": closest_top_doc.id, "target": new_doc_id, "label": "resonance"})
                     self._log(f"    - Spanned new document {new_text} (TOP)")
 
             # Rule: RIGHT (catalyst) + BOTTOM (base) -> new TOP
@@ -183,6 +189,9 @@ class SpinRAG:
                     new_doc_id = f"doc_{uuid.uuid4()}"
                     new_doc = Document(id=new_doc_id, text=new_text, spin=SpinType.TOP, epoch_history=[{"epoch": epoch, "spin": SpinType.TOP.value, "reason": "BOTTOM+RIGHT combination"}])
                     next_gen_top_docs.append(new_doc)
+                    # Add edges to the graph
+                    self.graph["edges"].append({"source": right_doc.id, "target": new_doc_id, "label": "combination"})
+                    self.graph["edges"].append({"source": closest_bottom_doc.id, "target": new_doc_id, "label": "combination"})
                     self._log(f"    - Created new document {new_text} (TOP)")
 
             # Rule: LEFT (catalyst) + BOTTOM (base) -> new BOTTOM
@@ -195,6 +204,9 @@ class SpinRAG:
                     new_doc_id = f"doc_{uuid.uuid4()}"
                     new_doc = Document(id=new_doc_id, text=new_text, spin=SpinType.BOTTOM, epoch_history=[{"epoch": epoch, "spin": SpinType.BOTTOM.value, "reason": "BOTTOM+LEFT combination"}])
                     next_gen_bottom_docs.append(new_doc)
+                    # Add edges to the graph
+                    self.graph["edges"].append({"source": left_doc.id, "target": new_doc_id, "label": "combination"})
+                    self.graph["edges"].append({"source": closest_bottom_doc.id, "target": new_doc_id, "label": "combination"})
                     self._log(f"    - Created new document {new_text} (BOTTOM)")
             
             # Check if any evolution occurred.
@@ -238,22 +250,34 @@ class SpinRAG:
             return "No TOP spin documents available for querying."
 
         similarities = [(doc, np.dot(query_embedding, doc.embeddings) / (np.linalg.norm(query_embedding) * np.linalg.norm(doc.embeddings))) for doc in top_spin_docs]
-        similarities.sort(key=lambda x: x, reverse=True)
+        similarities.sort(key=lambda x: x[1], reverse=True)
         
-        closest_doc, similarity = similarities
+        closest_doc, similarity = similarities[0]
         self._log(f"  - Closest TOP document: {closest_doc.id} (Similarity: {similarity:.4f})")
         
-        # Apply production rules
-        response = self._apply_query_production_rules(query_text, query_spin, query_embedding, closest_doc)
-        
+        query_doc_id = f"doc_{uuid.uuid4()}"
         if reorganize_graph:
             self._log("  - Reorganizing graph with new data from query.")
-            new_doc_id = f"doc_{uuid.uuid4()}"
-            new_doc = Document(id=new_doc_id, text=query_text, spin=query_spin, epoch_history=[{"epoch": "query", "spin": query_spin.value, "reason": "Query input"}])
+            new_doc = Document(id=query_doc_id, text=query_text, spin=query_spin, epoch_history=[{"epoch": "query", "spin": query_spin.value, "reason": "Query input"}])
             self.documents.append(new_doc)
-            self.graph["nodes"][new_doc_id] = {"text": new_doc.text, "spin": new_doc.spin.value}
+            self.graph["nodes"][new_doc.id] = {"text": new_doc.text, "spin": new_doc.spin.value}
+            self.graph["edges"].append({"source": query_doc_id, "target": closest_doc.id, "label": "queries"})
 
-        return response
+
+        # Apply production rules
+        response_text = self._apply_query_production_rules(query_text, query_spin, query_embedding, closest_doc)
+        
+        if reorganize_graph:
+            # Add the response as a new node and link it
+            response_doc_id = f"doc_{uuid.uuid4()}"
+            response_spin = self._get_spin(response_text)
+            response_doc = Document(id=response_doc_id, text=response_text, spin=response_spin, epoch_history=[{"epoch": "query_response", "spin": response_spin.value, "reason": "Generated from query"}])
+            self.documents.append(response_doc)
+            self.graph["nodes"][response_doc.id] = {"text": response_doc.text, "spin": response_doc.spin.value}
+            self.graph["edges"].append({"source": query_doc_id, "target": response_doc_id, "label": "generates_response"})
+            self.graph["edges"].append({"source": closest_doc.id, "target": response_doc_id, "label": "influences_response"})
+
+        return response_text
 
     def _apply_query_production_rules(self, query_text: str, query_spin: SpinType, query_embedding: np.ndarray, top_doc: Document) -> str:
         if query_spin == SpinType.LEFT:

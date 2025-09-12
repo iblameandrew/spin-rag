@@ -39,6 +39,7 @@ class SpinRAG:
 
         # Core state
         self.documents: List[Document] = []
+        self.doc_map: Dict[str, Document] = {}
         self.graph: Dict[str, Any] = {"nodes": {}, "edges": []}
         self.verbose_log: List[str] = []
 
@@ -59,7 +60,7 @@ class SpinRAG:
             template="""
             You are a semantic parser. Your task is to classify text by measure of how complex is.
 
-            - TOP: The text is simple.
+            - TOP: The text is a name.
             - BOTTOM: The text is complex.
             - LEFT: The text is incomplete and is missing some information to be understood.
             - RIGHT: The text is a definition.
@@ -82,20 +83,25 @@ class SpinRAG:
         elif "RIGHT" in response:
             return SpinType.RIGHT
         return SpinType.TOP
-
+    
     def initialize_index(self):
         self._log(f"🚀 Initializing SpinRAG index from in-memory content.")
         
         # Use the content string directly instead of reading a file
         raw_text = self.content
 
-        splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
-        texts = splitter.split_text(raw_text)
+        # --- FIX START ---
+        # The original RecursiveCharacterTextSplitter was grouping short, incomplete lines.
+        # Since the data is line-delimited, we split by newline and filter out empty lines.
+        # This ensures every entry, complete or not, is treated as a separate document.
+        texts = [line.strip() for line in raw_text.split('\n') if line.strip()]
+        self._log(f"Found {len(texts)} individual lines to process as documents.")
+        # --- FIX END ---
 
         for i, text in enumerate(texts):
             doc_id = f"doc_{uuid.uuid4()}"
             spin = self._get_spin(text)
-            self._log(f"📄 Chunk {text}: Assigning initial spin -> {spin.value}")
+            self._log(f"📄 Chunk '{text}': Assigning initial spin -> {spin.value}")
             
             doc = Document(
                 id=doc_id,
@@ -104,6 +110,7 @@ class SpinRAG:
                 epoch_history=[{"epoch": 0, "spin": spin.value}]
             )
             self.documents.append(doc)
+            self.doc_map[doc_id] = doc
             self.graph["nodes"][doc_id] = {
                 "text": text,
                 "spin": spin.value,
@@ -218,6 +225,7 @@ class SpinRAG:
             new_docs_this_epoch = next_gen_top_docs + next_gen_bottom_docs
             self.documents.extend(new_docs_this_epoch)
             for doc in new_docs_this_epoch:
+                self.doc_map[doc.id] = doc
                 self.graph["nodes"][doc.id] = {
                     "text": doc.text,
                     "spin": doc.spin.value,
@@ -260,6 +268,7 @@ class SpinRAG:
             self._log("  - Reorganizing graph with new data from query.")
             new_doc = Document(id=query_doc_id, text=query_text, spin=query_spin, epoch_history=[{"epoch": "query", "spin": query_spin.value, "reason": "Query input"}])
             self.documents.append(new_doc)
+            self.doc_map[new_doc.id] = new_doc
             self.graph["nodes"][new_doc.id] = {"text": new_doc.text, "spin": new_doc.spin.value}
             self.graph["edges"].append({"source": query_doc_id, "target": closest_doc.id, "label": "queries"})
 
@@ -273,6 +282,7 @@ class SpinRAG:
             response_spin = self._get_spin(response_text)
             response_doc = Document(id=response_doc_id, text=response_text, spin=response_spin, epoch_history=[{"epoch": "query_response", "spin": response_spin.value, "reason": "Generated from query"}])
             self.documents.append(response_doc)
+            self.doc_map[response_doc.id] = response_doc
             self.graph["nodes"][response_doc.id] = {"text": response_doc.text, "spin": response_doc.spin.value}
             self.graph["edges"].append({"source": query_doc_id, "target": response_doc_id, "label": "generates_response"})
             self.graph["edges"].append({"source": closest_doc.id, "target": response_doc_id, "label": "influences_response"})
@@ -293,9 +303,14 @@ class SpinRAG:
             return self.llm.invoke(new_text_prompt)
 
         elif query_spin == SpinType.BOTTOM:
-            # For a BOTTOM query, find the closest LEFT and RIGHT docs and see which interaction is stronger.
-            closest_left_doc, left_sim = self._find_closest_doc_of_spin(query_embedding, SpinType.LEFT)
-            closest_right_doc, right_sim = self._find_closest_doc_of_spin(query_embedding, SpinType.RIGHT)
+            # Get the adjacent documents to the closest TOP document
+            adjacent_docs = self._get_adjacent_docs(top_doc.id)
+            self._log(f"  - Found {len(adjacent_docs)} documents adjacent to the closest TOP doc ({top_doc.id}).")
+
+            # For a BOTTOM query, find the closest LEFT and RIGHT docs *within the adjacent nodes*
+            closest_left_doc, left_sim = self._find_closest_doc_of_spin(query_embedding, SpinType.LEFT, search_space=adjacent_docs)
+            closest_right_doc, right_sim = self._find_closest_doc_of_spin(query_embedding, SpinType.RIGHT, search_space=adjacent_docs)
+
 
             if right_sim > left_sim and closest_right_doc:
                 # BOTTOM combines with RIGHT to create a TOP
@@ -312,9 +327,10 @@ class SpinRAG:
         # Default to closest match if no other rules apply
         return top_doc.text
 
-    def _find_closest_doc_of_spin(self, query_embedding: np.ndarray, spin_type: SpinType) -> Tuple[Optional[Document], float]:
-        """Finds the most similar document of a given spin type."""
-        target_docs = [doc for doc in self.documents if doc.spin == spin_type]
+    def _find_closest_doc_of_spin(self, query_embedding: np.ndarray, spin_type: SpinType, search_space: Optional[List[Document]] = None) -> Tuple[Optional[Document], float]:
+        """Finds the most similar document of a given spin type within a given search space."""
+        source_docs = self.documents if search_space is None else search_space
+        target_docs = [doc for doc in source_docs if doc.spin == spin_type]
         if not target_docs:
             return None, 0.0
 
@@ -322,8 +338,22 @@ class SpinRAG:
         
         similarities = [np.dot(query_embedding, doc_emb) / (np.linalg.norm(query_embedding) * np.linalg.norm(doc_emb)) for doc_emb in doc_embeddings]
         
+        if not similarities:
+            return None, 0.0
+
         max_sim_index = np.argmax(similarities)
         return target_docs[max_sim_index], similarities[max_sim_index]
+
+    def _get_adjacent_docs(self, doc_id: str) -> List[Document]:
+        """Retrieves all documents adjacent to the given doc_id in the graph."""
+        adjacent_ids = set()
+        for edge in self.graph["edges"]:
+            if edge["source"] == doc_id:
+                adjacent_ids.add(edge["target"])
+            elif edge["target"] == doc_id:
+                adjacent_ids.add(edge["source"])
+        
+        return [self.doc_map[adj_id] for adj_id in adjacent_ids if adj_id in self.doc_map]
 
     def get_verbose_log(self) -> List[str]:
         return self.verbose_log

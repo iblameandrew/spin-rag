@@ -2,7 +2,7 @@
 
 **SpinRAG** is a Retrieval-Augmented Generation (RAG) algorithm designed to act as the "intuitive," low-level brain for Large Language Model (LLM) pipelines. It provides fast, near-zero latency context and memory, complementing the high-level "thinking" of an LLM.
 
-The core idea is to move beyond static vector databases and create an evolving knowledge graph that continually re-organizes and forms new perspectives on existing data.
+The core idea is to move beyond static vector databases and create an evolving knowledge graph that continually re-organizes and forms new perspectives on existing data - the heuristic works really well evolving messy data into complete coherent self contained definitions.
 
 ## ✨ Key Features
 

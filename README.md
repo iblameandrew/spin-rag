@@ -129,6 +129,48 @@ from spin_rag import SpinRAG, SpinType, Document
 - **Embedding model required.** Reusing a single chat model for both generation and embeddings is no longer supported by default — chat-tuned models typically reject `/api/embeddings`.
 - **Hallucination on damaged input.** The restoration guardrail reduces but does not eliminate fabrication. Treat `LEFT`/`RIGHT`/`BOTTOM` query outputs as drafts.
 
+## Changelog
+
+### v0.1.0a1 — 2026-06-06 (first public alpha)
+
+Restoration-first hardening pass and exhaustive bug hunt.
+
+**Packaging (the package was effectively un-installable before this release)**
+- `setup.py` previously declared `py_modules=['spinlm']` for a module that did not exist; replaced with `find_packages()` and corrected project metadata (name, author, URL, classifiers, keywords).
+- `spin_rag/__init__.py` was empty; now re-exports `SpinRAG`, `SpinType`, `Document`, and `__version__`.
+- `requirements.txt` was missing `langchain-ollama` (imported by `spin_rag.py`) and pinned no minimum versions; both fixed.
+
+**Core runtime bugs (`spin_rag/spin_rag.py`)**
+- `OllamaEmbeddings(model=llm_model)` crashed initialization on chat-tuned models (qwen3-instruct, llama-chat, etc.) which do not expose `/api/embeddings`. Split into a separate `embed_model` parameter defaulting to `nomic-embed-text`.
+- Cosine similarity divided by `np.linalg.norm` at three sites without a zero-norm guard; consolidated into a `_cosine_similarity` helper that returns `0.0` for degenerate vectors.
+- `_find_closest_doc` re-embedded the entire base corpus on every catalyst interaction during evolution. Added a per-text embedding cache so each string is embedded at most once.
+- `_get_spin` used naive `"TOP" in response` checks; LLM reasoning prefixes like *"Not a TOP, it is BOTTOM"* misclassified. Replaced with a `\b(TOP|BOTTOM|LEFT|RIGHT)\b` regex match.
+- LLM outputs flowed into new documents unstripped, sometimes with surrounding quotes or stray markdown fences. Added a `_clean_llm_output` normaliser.
+- Deprecated `LLMChain` replaced with direct `llm.invoke` calls; switched to the new `langchain-ollama` package with a fallback to `langchain-community` for older installs.
+- `_log` crashed on Windows cp1252 consoles when printing emoji (`UnicodeEncodeError`); now falls back to ascii-safe output.
+- Removed dead imports (`hashlib`, `json`, `time`, `Path`, `RecursiveCharacterTextSplitter`).
+
+**Restoration-first prompts**
+- Every evolution and query production rule is now wrapped in a `_RESTORATION_GUARDRAIL` that instructs the model to preserve every noun, number, and relationship from the source fragments and mark genuine unknowns with `[unknown]` instead of guessing.
+- Pure `TOP`-spin queries are returned **verbatim** from the closest matching document with no LLM rewriting — full restoration, zero hallucination on that path.
+- The default fallback inside `_apply_query_production_rules` now also returns the closest TOP document verbatim instead of dropping to an empty string.
+
+**Demo (`demo.py`)**
+- Initialize button never re-enabled after a run; replaced with an `init_in_progress` flag plus a live status indicator (idle / busy / ready).
+- Separate selectors for the LLM and the embedding model.
+- Race conditions on the shared `rag` instance and `log_stream` resolved with `_rag_lock` / `_state_lock`.
+- Chat input now clears after send; pressing Enter submits; the verbose log is reset on each re-initialisation.
+- Verbose log capped at the last 500 lines to keep the Dash UI responsive on long runs.
+- Deprecated `llm.predict()` replaced with `llm.invoke()`; LLM failures degrade gracefully to showing the retrieved context.
+
+**README**
+- Corrected the documented import (`from spin_rag import SpinRAG`) and constructor signature (`content=`, `embed_model=`).
+- Fixed the `pip install - r requirements.txt` typo.
+- Added the *"What this alpha emphasizes"* section documenting the restoration / hallucination trade-off and a *"Known limitations"* section.
+
+**.gitignore**
+- Also ignores build artefacts (`build/`, `dist/`, `*.egg-info/`) and local AI-assistant tooling (`.claude/`, `AGENTS.md`, `CLAUDE.md`, `.gitnexus/`).
+
 ## License
 
 MIT.

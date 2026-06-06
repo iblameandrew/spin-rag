@@ -10,3 +10,16 @@
 *.env
 *.mmd
 
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Local AI assistant tooling — not part of the public package
+.gitnexus/
+.claude/
+AGENTS.md
+CLAUDE.md
+
+# Windows stray
+nul

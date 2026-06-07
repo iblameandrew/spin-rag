@@ -20,12 +20,12 @@ with open(
 
 setup(
     name="spin-rag",
-    version="0.1.0a1",
+    version="0.1.0",
     author="iblameandrew",
     author_email="iblameandrew@users.noreply.github.com",
     description=(
-        "SpinRAG: an evolving knowledge-graph RAG that restores incomplete or "
-        "damaged documents into self-contained definitions."
+        "SpinRAG: a typed, self-evolving knowledge-graph RAG for restoring "
+        "damaged or fragmented business records."
     ),
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -37,8 +37,9 @@ setup(
     license="MIT",
     packages=find_packages(exclude=("tests", "tests.*")),
     classifiers=[
-        "Development Status :: 3 - Alpha",
+        "Development Status :: 5 - Production/Stable",
         "Intended Audience :: Developers",
+        "Intended Audience :: Financial and Insurance Industry",
         "Intended Audience :: Science/Research",
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
@@ -49,6 +50,7 @@ setup(
         "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: 3.12",
         "Framework :: Dash",
+        "Topic :: Office/Business :: Financial",
         "Topic :: Scientific/Engineering :: Artificial Intelligence",
         "Topic :: Text Processing :: Linguistic",
     ],
@@ -57,9 +59,14 @@ setup(
         "retrieval-augmented-generation",
         "knowledge-graph",
         "document-restoration",
-        "ollama",
-        "langchain",
+        "openrouter",
+        "llama-cpp",
+        "openai-compatible",
+        "openai",
         "llm",
+        "finance",
+        "ledger",
+        "ocr",
     ],
     python_requires=">=3.8",
     install_requires=load_requirements(),

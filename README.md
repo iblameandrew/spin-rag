@@ -2,22 +2,24 @@
 
 # SpinRAG
 
-> **Status: `v0.1.0a1` — first public alpha.** A typed, self-evolving knowledge graph for RAG over **damaged corpora**. Tuned for **document restoration** first: faithful reconstruction is prioritized, and hallucination risk is explicitly bounded by the spin of the query.
+> A typed, self-evolving knowledge graph for RAG over **damaged business records** — fiscal ledgers, OCR dumps, half-finished wiki entries, ticket exports. SpinRAG treats broken fragments as the *input signal* and uses the LLM to repair the graph into a self-consistent retrieval index.
+
+`v0.1.0` — first official release. OpenAI-SDK compatible: ships with **OpenRouter** and a self-hosted **llama.cpp** server as first-class backends.
 
 ---
 
 ## The problem SpinRAG solves
 
-Vanilla vector RAG assumes your corpus is clean. Real-world knowledge bases — scraped notes, OCR dumps, half-finished wikis, crash-recovered transcripts, leaked logs — are not. They are a mix of:
+Plain vector RAG assumes your corpus is clean. Real-world record dumps — exported ledgers, scanned invoices, support tickets, crash-recovered notebooks — are not. They mix:
 
-- **complete entries** (`Mars Aries × Venus Taurus | The Gilded War-Horn: an artifact that summons a phantom bull made of pure gold…`),
-- **truncated entries** (`* Pluto Aquarius -`),
-- **bare tokens** (`pluto`),
-- and **schema/parameter rows** that describe structure without content.
+- **complete entries** — `Revenue 2026-Q1-006 | Client: Globex Industries | Period: 2026-Q1 | Amount: $128,000.00 | Status: received | Product: Platform license`,
+- **schema-only rows** — `Vendor: Initech | Period: 2026 | Type: revenue`,
+- **truncated rows** — `Acme Corp. -`,
+- **bare tokens** — `Consulting`, `Pied Piper`.
 
-A flat vector index treats all four as equal points in a cloud. The broken lines pollute retrieval and there is no mechanism to ever *repair* them. Once damaged, always damaged.
+A flat vector index treats all four as equal points in a cloud. The broken rows pollute retrieval and there is no mechanism to ever *repair* them. Once damaged, always damaged.
 
-SpinRAG starts from the opposite assumption: damaged data is the **input signal**, not noise. Broken fragments are first-class catalysts that *drive the graph to repair itself*.
+SpinRAG starts from the opposite assumption: damaged data is the **input signal**, not noise. Broken fragments are first-class catalysts that drive the graph to repair itself.
 
 ---
 
@@ -33,9 +35,9 @@ SpinRAG starts from the opposite assumption: damaged data is the **input signal*
 
 The three things that are actually new:
 
-1. **Typed spins as a 4-state algebra.** Every chunk is classified by a small language model into one of four roles — `TOP` (self-contained concept), `BOTTOM` (complex target), `LEFT` (incomplete fragment), `RIGHT` (definition / parameter structure). These types are not metadata; they are the **only thing that decides which production rule applies**.
+1. **Typed spins as a 4-state algebra.** Every chunk is classified by a small language model into one of four roles — `TOP` (self-contained entry), `BOTTOM` (complex target), `LEFT` (incomplete fragment), `RIGHT` (schema / parameter row). These types are not metadata; they are the **only thing that decides which production rule applies**.
 
-2. **Evolution by production rules.** Across `n_epochs`, `LEFT` and `RIGHT` chunks act as catalysts that find their *metrically closest* `TOP` / `BOTTOM` partner and fuse with it under a restoration-biased prompt. New `TOP` and `BOTTOM` documents are minted from the fusion, the graph densifies, and incomplete fragments are gradually re-expressed as complete definitions. The corpus literally rewrites itself toward coherence.
+2. **Evolution by production rules.** Across `n_epochs`, `LEFT` and `RIGHT` chunks act as catalysts that find their *metrically closest* `TOP` / `BOTTOM` partner and fuse with it under a restoration-biased prompt. New `TOP` and `BOTTOM` documents are minted from the fusion, the graph densifies, and incomplete fragments are gradually re-expressed as complete entries. The corpus literally rewrites itself toward coherence.
 
 3. **A bounded hallucination contract.** Because the spin of the *query* selects the production rule, the user can choose their fidelity / synthesis trade per-query. `TOP` queries return the closest stored document **verbatim** — zero LLM rewriting, zero hallucination. `LEFT` / `RIGHT` / `BOTTOM` queries pass through guardrailed generative rules. The user opts in to invention; they don't get it by default.
 
@@ -43,12 +45,12 @@ The three things that are actually new:
 
 ## Concrete benefits
 
-- 🩹 **Recovers content from corrupted dumps.** Half-finished lines (`* Pluto Aquarius -`) get re-merged with the most semantically related complete entry, instead of being dropped.
+- 🩹 **Recovers content from corrupted exports.** Truncated lines (`Acme Corp. -`) get re-merged with the most semantically related complete row instead of being dropped.
 - 📈 **Self-improving index.** Re-running with more epochs produces a denser, more self-consistent graph without re-ingesting raw source.
 - 🔬 **Visible provenance.** Every generated document carries an `epoch_history` and `graph["edges"]` that point back to the catalyst and base that produced it. Audit-friendly.
 - 🎚️ **Tunable hallucination risk.** TOP-only deployments are fully extractive; enabling LEFT/RIGHT/BOTTOM queries turns on guardrailed synthesis.
-- 🤖 **Runs on small local models.** Ollama + a 4 B chat model + `nomic-embed-text` is enough. No API keys, no cloud, no data exfiltration.
-- 🔗 **LangChain-native.** Drops into existing LangChain pipelines as a retriever-style backend.
+- 🔌 **OpenAI-compatible backends.** Drop-in for OpenRouter-hosted models or a self-hosted `llama.cpp` server. No vendor lock-in.
+- 🔗 **No API key needed for local.** Run fully on-prem with `llama-server` and your own GGUF weights.
 
 ---
 
@@ -58,23 +60,23 @@ Each line of input becomes a particle whose spin determines its dynamics. A smal
 
 | Spin       | Icon | Meaning                                                                  | Example from `demo-data.txt` |
 | :--------- | :--: | :----------------------------------------------------------------------- | :--- |
-| **TOP**    |  ⬆️  | Self-contained name or concept. **Stored verbatim, retrievable directly.** | `Mars Aries × Sun Leo \| The Arena of Ascended Champions: a mythical battleground where mortals can challenge legendary heroes.` |
-| **BOTTOM** |  ⬇️  | Complex / a target waiting to be crystallized.                            | A long passage describing an evolving ritual that needs definitions to lock in. |
-| **LEFT**   |  ⬅️  | Incomplete — missing information to be understood.                        | `* Pluto Aquarius -` &nbsp; / &nbsp; `pluto` |
-| **RIGHT**  |  ➡️  | Definition or parameter structure.                                        | `Jupiter Aries — Neptune Pisces` (a schema-shaped row with no body) |
+| **TOP**    |  ⬆️  | Self-contained entry. **Stored verbatim, retrievable directly.**         | `Revenue 2026-Q1-006 \| Client: Globex Industries \| Period: 2026-Q1 \| Amount: $128,000.00 \| Status: received \| Product: Platform license` |
+| **BOTTOM** |  ⬇️  | Complex entry / a target waiting to be crystallized.                      | A long memo referencing several open ledger items that need structure. |
+| **LEFT**   |  ⬅️  | Incomplete — missing information to be understood.                        | `Acme Corp. -` &nbsp; / &nbsp; `Consulting` &nbsp; / &nbsp; `Pied Piper` |
+| **RIGHT**  |  ➡️  | Schema or parameter row.                                                 | `Vendor: Initech \| Period: 2026 \| Type: revenue` |
 
 ---
 
 ## The four production rules
 
-During each evolution epoch, every `LEFT` and `RIGHT` catalyst is matched to its **single closest** `TOP` / `BOTTOM` partner (cosine similarity over Ollama embeddings) and fused under the restoration guardrail:
+During each evolution epoch, every `LEFT` and `RIGHT` catalyst is matched to its **single closest** `TOP` / `BOTTOM` partner (cosine similarity over OpenRouter / llama.cpp embeddings) and fused under the restoration guardrail:
 
 | Catalyst | Base | Produces | Intuition |
 |---|---|---|---|
-| **LEFT** | **TOP** | new **TOP** | An incomplete fragment is *repaired* against the nearest complete concept. The damaged data is the trigger; the intact concept supplies the missing facts. |
-| **RIGHT** | **TOP** | new **TOP** | A definition *resonates* with a concept and births a more fully-specified concept. |
-| **RIGHT** | **BOTTOM** | new **TOP** | A definition *crystallizes* a complex target into a self-contained concept. |
-| **LEFT** | **BOTTOM** | new **BOTTOM** | An incomplete fragment *thickens* a complex target into a richer, still-complex target (next epoch may crystallize it via a RIGHT). |
+| **LEFT** | **TOP** | new **TOP** | An incomplete fragment is *repaired* against the nearest complete entry. The damaged row is the trigger; the intact entry supplies the missing fields. |
+| **RIGHT** | **TOP** | new **TOP** | A schema row *resonates* with a complete entry and births a more fully-specified entry. |
+| **RIGHT** | **BOTTOM** | new **TOP** | A schema row *crystallizes* a complex entry into a self-contained one. |
+| **LEFT** | **BOTTOM** | new **BOTTOM** | An incomplete fragment *thickens* a complex entry into a richer, still-complex entry (next epoch may crystallize it via a RIGHT). |
 
 Catalysts are *not* consumed — they remain available every epoch. The base sets grow as new `TOP` / `BOTTOM` documents are minted, so the next epoch finds different nearest neighbors. The system converges (or halts) when no rule produces a new document.
 
@@ -89,7 +91,7 @@ Catalysts are *not* consumed — they remain available every epoch. The base set
 | Query spin | Behaviour | Hallucination risk |
 |---|---|---|
 | **TOP**    | Return the closest `TOP` document **verbatim**. | **None.** Pure extractive retrieval. |
-| **LEFT**   | Restore the missing parameter structure of the query using the closest `TOP` as the source of truth. | Bounded by guardrail. |
+| **LEFT**   | Restore the missing fields of the query using the closest `TOP` as the source of truth. | Bounded by guardrail. |
 | **RIGHT**  | Project a complex target that preserves every fact in both the query and the closest `TOP`. | Bounded by guardrail. |
 | **BOTTOM** | Walk the graph: find the most relevant `LEFT` / `RIGHT` *adjacent to* the closest `TOP` (i.e. its actual provenance neighbors), then fuse. | Bounded by guardrail + provenance. |
 
@@ -102,26 +104,27 @@ The `BOTTOM` path is the one that makes the typed graph pay off: instead of doin
 Given a corpus where most lines look like
 
 ```
-Mars Aries × Venus Libra | The Duelist's Challenge: a spell that creates a pocket dimension where two combatants are forced into a fair, one-on-one fight…
+Revenue 2026-Q1-006 | Client: Globex Industries | Period: 2026-Q1 | Amount: $128,000.00 | Status: received | Product: Platform license
 ```
 
 and a few are broken
 
 ```
-Jupiter Aries — Neptune Pisce
-* Pluto Aquarius -
-pluto
+Acme Corp. -
+Consulting
+Pied Piper
+Vendor: Initech | Period: 2026 | Type: revenue
 ```
 
-A vanilla vector RAG indexes all six lines as points; the three broken lines show up as confident-but-empty matches and degrade every answer.
+A vanilla vector RAG indexes all five lines as points; the four broken lines show up as confident-but-empty matches and degrade every answer.
 
 SpinRAG, after `n_epochs=3`:
 
-1. Classifies the complete rows as `TOP`, the `Jupiter Aries — Neptune Pisce` schema-shaped row as `RIGHT`, the truncated rows as `LEFT`.
-2. **Epoch 1:** `pluto` (LEFT) finds its closest `TOP` (some Pluto/Scorpio entry) and births a new `TOP` that incorporates the bare token into a complete definition. `Jupiter Aries — Neptune Pisce` (RIGHT) resonates with the nearest Jupiter/Sagittarius TOP and produces a new TOP with the Jupiter-Aries-to-Neptune-Pisces relationship now spelled out.
+1. Classifies the complete rows as `TOP`, the `Vendor: Initech | Period: 2026 | Type: revenue` schema row as `RIGHT`, the truncated / bare rows as `LEFT`.
+2. **Epoch 1:** `Consulting` (LEFT) finds its closest `TOP` (some revenue line where the product is a consulting engagement) and births a new `TOP` that incorporates the bare token into a complete entry. The Initech `RIGHT` row resonates with the nearest revenue entry mentioning Initech and produces a new `TOP` with the Initech 2026 revenue now spelled out.
 3. **Epoch 2–3:** the freshly minted `TOP` documents are themselves available as bases for the same catalysts, so the broken lines fuse with progressively more specific neighbors.
 4. After evolution, all `TOP` documents are embedded.
-5. A query like *"what does Pluto Aquarius do?"* — classified as `BOTTOM` (a complex target without a definition) — retrieves the closest `TOP`, then fuses with the `LEFT`/`RIGHT` adjacent to that `TOP` (which include the original `* Pluto Aquarius -` fragment as provenance), and returns a restored answer that traces back to the actual source line.
+5. A query like *"What revenue did Acme Corp. generate in 2026-Q1?"* — classified as `BOTTOM` (a complex target without a definition) — retrieves the closest `TOP`, then fuses with the `LEFT`/`RIGHT` adjacent to that `TOP` (which include the original `Acme Corp. -` fragment as provenance), and returns a restored answer that traces back to the actual source line.
 
 The verbose log preserves every decision; the graph preserves every edge.
 
@@ -132,16 +135,13 @@ The verbose log preserves every decision; the graph preserves every edge.
 ### Prerequisites
 
 - Python 3.8+
-- [Ollama](https://ollama.ai/) running locally with **two** models pulled:
+- A backend — pick **one** of:
+  - An **OpenRouter** account and API key, *or*
+  - A locally-running **`llama.cpp` server** (built with the `server` target, exposing its OpenAI-compatible `/v1` endpoint). Start it with the embedding flag enabled if you want to use the embeddings endpoint as well:
 
-  ```bash
-  # Generation model (any chat/instruct model works)
-  ollama pull qwen3:4b-instruct-2507
-
-  # Dedicated embedding model — required because most chat models
-  # do NOT expose an embeddings endpoint.
-  ollama pull nomic-embed-text
-  ```
+    ```bash
+    ./llama-server -m model.gguf --port 8080 --embedding
+    ```
 
 ### Installation
 
@@ -150,33 +150,49 @@ git clone https://github.com/iblameandrew/spin-rag.git
 cd spin-rag
 pip install -r requirements.txt
 pip install -e .
+
+cp .env.example .env
+# Edit .env to set OPENROUTER_API_KEY (if using OpenRouter).
 ```
 
 ### Programmatic usage
 
 ```python
-from spin_rag import SpinRAG
+from spin_rag import SpinRAG, BACKEND_OPENROUTER, BACKEND_LLAMACPP
 
-with open("path/to/your/knowledge_base.txt", "r", encoding="utf-8") as f:
+with open("path/to/your/ledger_dump.txt", "r", encoding="utf-8") as f:
     content = f.read()
 
+# --- Option A: OpenRouter (default) ----------------------------------------
 rag = SpinRAG(
     content=content,
     n_epochs=5,
-    llm_model="qwen3:4b-instruct-2507",
-    embed_model="nomic-embed-text",
+    backend=BACKEND_OPENROUTER,
+    llm_model="openai/gpt-4o-mini",
+    embed_model="openai/text-embedding-3-small",
+    api_key="sk-or-...",  # or set OPENROUTER_API_KEY
+)
+
+# --- Option B: self-hosted llama.cpp server --------------------------------
+rag = SpinRAG(
+    content=content,
+    n_epochs=5,
+    backend=BACKEND_LLAMACPP,
+    base_url="http://localhost:8080/v1",
+    llm_model="llama",   # whatever alias the server has loaded
+    embed_model="llama", # same model, used in --embedding mode
 )
 
 # Extractive query (TOP): returned verbatim, zero hallucination.
-print(rag.query("The Arena of Ascended Champions"))
+print(rag.query("Globex Industries Q1 revenue"))
 
 # Restoration query (LEFT): the broken fragment is completed against
 # the nearest TOP under the restoration guardrail.
-print(rag.query("* Pluto Aquarius -"))
+print(rag.query("Acme Corp. -"))
 
 # Provenance-aware synthesis (BOTTOM): walks the graph from the closest
 # TOP through its LEFT/RIGHT neighbors.
-print(rag.query("Describe an Aquarius-aspected pluto ritual."))
+print(rag.query("Summarize 2026-Q1 receivables."))
 
 # Audit trail
 for line in rag.get_verbose_log():
@@ -189,22 +205,31 @@ for line in rag.get_verbose_log():
 python demo.py
 ```
 
-Open <http://127.0.0.1:8050>, upload a `.txt`, pick your models and epoch count, click **Initialize RAG**, then chat. The left panel streams the verbose evolution log in real time.
+Open <http://127.0.0.1:8050>, upload a `.txt`, pick your backend, paste the API key (if any), pick your models and epoch count, click **Initialize RAG**, then chat. The left panel streams the verbose evolution log in real time.
 
 ---
 
 ## Public API
 
 ```python
-from spin_rag import SpinRAG, SpinType, Document
+from spin_rag import (
+    SpinRAG,
+    SpinType,
+    Document,
+    BACKEND_OPENROUTER,
+    BACKEND_LLAMACPP,
+)
 ```
 
-**`SpinRAG(content, n_epochs=5, llm_model="llama2", embed_model=None, config=None, logger_callback=None)`**
+**`SpinRAG(content, n_epochs=5, llm_model=..., embed_model=..., backend=BACKEND_OPENROUTER, base_url=None, api_key=None, app_name=None, site_url=None, config=None, logger_callback=None)`**
 
 - `content` — raw text; one document per non-empty line.
 - `n_epochs` — number of evolution epochs.
-- `llm_model` — Ollama generation model.
-- `embed_model` — Ollama embedding model. Defaults to `nomic-embed-text` because most chat-tuned models cannot embed.
+- `llm_model` — model identifier for the chosen backend. For OpenRouter, the full model ID (e.g. `openai/gpt-4o-mini`). For llama.cpp, the alias under which the model was loaded on the server.
+- `embed_model` — embedding model identifier (same conventions as `llm_model`). Defaults to a sensible value per backend.
+- `backend` — `BACKEND_OPENROUTER` (default) or `BACKEND_LLAMACPP`.
+- `base_url` — override the default base URL. `None` means use the backend's default (`https://openrouter.ai/api/v1` or `http://localhost:8080/v1`) or whatever is set in the relevant environment variable.
+- `api_key` — API key. `None` means read from the relevant environment variable.
 - `logger_callback` — optional `Callable[[str], None]` for streaming logs (used by `demo.py`).
 
 **`SpinRAG.query(query_text, reorganize_graph=False) -> str`** — returns the restored answer. If `reorganize_graph=True`, the query and its response are added back into the graph as new nodes with provenance edges, so subsequent queries can see them.
@@ -223,19 +248,39 @@ Public dataclasses: `Document(id, text, spin, embeddings, epoch_history, metadat
 
 ---
 
-## Known limitations of this alpha
+## Considerations
 
-- **No persistence.** The graph lives in memory; restart = re-evolve.
-- **No batching.** Each catalyst interaction is a separate LLM call; large corpora are slow.
-- **No automated tests.** Behaviour is validated only by the demo flow and manual inspection.
-- **Embedding model required.** Reusing a single chat model for both generation and embeddings is no longer supported by default — chat-tuned models typically reject `/api/embeddings`.
-- **Hallucination on damaged input.** The restoration guardrail reduces but does not eliminate fabrication. Treat `LEFT` / `RIGHT` / `BOTTOM` query outputs as drafts.
+- **Backend choice.** OpenRouter is the path of least resistance for hosted models; llama.cpp is the path of least resistance for fully-local deployments. Both speak the same OpenAI HTTP protocol, so swapping is one argument.
+- **Hallucination on damaged input.** The restoration guardrail reduces but does not eliminate fabrication. Treat `LEFT` / `RIGHT` / `BOTTOM` query outputs as drafts and verify against the underlying records.
+- **Persistence.** The graph lives in memory. For long-running use, persist `rag.documents` and `rag.graph` to disk between runs.
+- **Cost / latency.** Evolution is LLM-heavy by design. Pick a small model for spin classification and a more capable model for fusion if you want to balance cost.
 
 ---
 
 ## Changelog
 
-### v0.1.0a1 — 2026-06-06 (first public alpha)
+### v0.1.0 — 2026-06-06 (first official release)
+
+The first release of SpinRAG marketed as production-ready. Ships with a typed, evolving knowledge-graph RAG that runs against **OpenRouter** (hosted) or a **llama.cpp** server (local), both via the OpenAI Python SDK.
+
+**Backend refactor**
+- Replaced the LangChain / Ollama stack with a thin wrapper around the official `openai` Python SDK. SpinRAG now talks the OpenAI-compatible HTTP protocol directly.
+- Two backends supported out of the box, selectable via `backend=`:
+  - `BACKEND_OPENROUTER` (default) — OpenRouter's hosted model catalog. Reads `OPENROUTER_API_KEY` from the environment; honors `OPENROUTER_BASE_URL`, `OPENROUTER_SITE_URL`, and `OPENROUTER_APP_NAME` for attribution headers.
+  - `BACKEND_LLAMACPP` — a self-hosted `llama.cpp` server's built-in `/v1` endpoint. No API key required; default base URL is `http://localhost:8080/v1`.
+- `langchain`, `langchain-community`, `langchain-ollama`, and `sentence-transformers` are no longer dependencies.
+
+**Demo (`demo.py`)**
+- Added a backend radio selector (OpenRouter vs llama.cpp) and an editable base-URL field.
+- Added an API-key input; falls back to environment variables when empty.
+- Model dropdowns now expose curated OpenRouter and llama.cpp options rather than a hard-coded Ollama list.
+
+**Repo hygiene**
+- Replaced `demo-data.txt` with a realistic fiscal-ledger dump so the worked example in the README is grounded in real-world records.
+- Rewrote the README to be positioning-neutral and enterprise-readable: removed all decorative examples that read as fringe and replaced them with concrete ledger / invoice scenarios. The algorithm, novelty, and worked example are all carried by business records now.
+- Added `.env.example` documenting every environment variable.
+
+### v0.1.0a1 — 2026-06-06 (first public alpha — superseded)
 
 Restoration-first hardening pass and exhaustive bug hunt.
 
@@ -245,7 +290,7 @@ Restoration-first hardening pass and exhaustive bug hunt.
 - `requirements.txt` was missing `langchain-ollama` (imported by `spin_rag.py`) and pinned no minimum versions; both fixed.
 
 **Core runtime bugs (`spin_rag/spin_rag.py`)**
-- `OllamaEmbeddings(model=llm_model)` crashed initialization on chat-tuned models (qwen3-instruct, llama-chat, etc.) which do not expose `/api/embeddings`. Split into a separate `embed_model` parameter defaulting to `nomic-embed-text`.
+- `OllamaEmbeddings(model=llm_model)` crashed initialization on chat-tuned models which do not expose `/api/embeddings`. Split into a separate `embed_model` parameter defaulting to `nomic-embed-text`.
 - Cosine similarity divided by `np.linalg.norm` at three sites without a zero-norm guard; consolidated into a `_cosine_similarity` helper that returns `0.0` for degenerate vectors.
 - `_find_closest_doc` re-embedded the entire base corpus on every catalyst interaction during evolution. Added a per-text embedding cache so each string is embedded at most once.
 - `_get_spin` used naive `"TOP" in response` checks; LLM reasoning prefixes like *"Not a TOP, it is BOTTOM"* misclassified. Replaced with a `\b(TOP|BOTTOM|LEFT|RIGHT)\b` regex match.

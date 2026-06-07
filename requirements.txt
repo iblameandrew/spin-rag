@@ -1,7 +1,6 @@
+numpy>=1.23
+openai>=1.40
+
+# Optional Dash web UI (the demo)
 dash>=2.14
 dash-bootstrap-components>=1.5
-langchain>=0.2
-langchain-community>=0.2
-langchain-ollama>=0.1.3
-numpy>=1.23
-sentence-transformers>=2.2

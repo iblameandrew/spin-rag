@@ -1,7 +1,8 @@
 """SpinRAG Dash demo.
 
 A small UI to:
-- upload a damaged knowledge base,
+- upload a damaged knowledge base (e.g. a torn fiscal ledger dump),
+- pick an OpenAI-compatible backend (OpenRouter or a local llama.cpp server),
 - watch the evolution log in real time,
 - chat against the restored TOP-spin documents.
 """
@@ -9,19 +10,25 @@ A small UI to:
 from __future__ import annotations
 
 import base64
+import os
 import threading
 from typing import List
 
 import dash
 import dash_bootstrap_components as dbc
 from dash import Input, Output, State, dcc, html, no_update
+from openai import OpenAI
 
-try:
-    from langchain_ollama import OllamaLLM as _OllamaLLM
-except ImportError:  # pragma: no cover
-    from langchain_community.llms import Ollama as _OllamaLLM  # type: ignore
-
-from spin_rag import SpinRAG
+from spin_rag import (
+    BACKEND_LLAMACPP,
+    BACKEND_OPENROUTER,
+    DEFAULT_EMBED_MODEL,
+    DEFAULT_LLAMACPP_BASE_URL,
+    DEFAULT_LLAMACPP_MODEL,
+    DEFAULT_LLM_MODEL,
+    DEFAULT_OPENROUTER_BASE_URL,
+    SpinRAG,
+)
 
 
 # --- App initialization -----------------------------------------------------
@@ -58,17 +65,42 @@ def _reset_log() -> None:
 
 # --- Layout -----------------------------------------------------------------
 
-DEFAULT_MODELS = [
-    "qwen3:4b-instruct-2507",
-    "qwen3:1.7b",
-    "llama3.1:8b",
-    "llama2",
+OPENROUTER_LLM_OPTIONS = [
+    {
+        "label": "Meta Llama 3.1 8B Instruct",
+        "value": "meta-llama/llama-3.1-8b-instruct",
+    },
+    {"label": "OpenAI GPT-4o mini", "value": "openai/gpt-4o-mini"},
+    {"label": "OpenAI GPT-4.1 mini", "value": "openai/gpt-4.1-mini"},
+    {"label": "Google Gemini 2.0 Flash", "value": "google/gemini-2.0-flash-001"},
+    {"label": "Anthropic Claude 3.5 Haiku", "value": "anthropic/claude-3.5-haiku"},
+    {"label": "Qwen 2.5 72B Instruct", "value": "qwen/qwen-2.5-72b-instruct"},
 ]
-DEFAULT_EMBED_MODELS = [
-    "nomic-embed-text",
-    "mxbai-embed-large",
-    "all-minilm",
+
+OPENROUTER_EMBED_OPTIONS = [
+    {
+        "label": "OpenAI text-embedding-3-small (1536d)",
+        "value": "openai/text-embedding-3-small",
+    },
+    {
+        "label": "OpenAI text-embedding-3-large (3072d)",
+        "value": "openai/text-embedding-3-large",
+    },
+    {"label": "Qwen 3 Embedding 8B", "value": "qwen/qwen3-embedding-8b"},
+    {"label": "Cohere English v3", "value": "cohere/embed-english-v3.0"},
 ]
+
+LLAMACPP_LLM_OPTIONS = [
+    {
+        "label": "Default (whatever the server has loaded)",
+        "value": DEFAULT_LLAMACPP_MODEL,
+    },
+]
+
+LLAMACPP_EMBED_OPTIONS = [
+    {"label": "Default (same model as LLM)", "value": DEFAULT_LLAMACPP_MODEL},
+]
+
 
 app.layout = dbc.Container(
     fluid=True,
@@ -76,7 +108,8 @@ app.layout = dbc.Container(
         dbc.Row(
             [
                 dbc.Col(
-                    html.H1("🧠 SpinRAG Demo", className="text-center my-4"), width=12
+                    html.H1("🧠 SpinRAG Demo", className="text-center my-4"),
+                    width=12,
                 )
             ]
         ),
@@ -114,23 +147,49 @@ app.layout = dbc.Container(
                                             id="upload-status",
                                             className="small text-muted mb-2",
                                         ),
-                                        dbc.Label("LLM model"),
+                                        dbc.Label("Backend"),
+                                        dbc.RadioItems(
+                                            id="backend-select",
+                                            options=[
+                                                {
+                                                    "label": "OpenRouter (hosted)",
+                                                    "value": BACKEND_OPENROUTER,
+                                                },
+                                                {
+                                                    "label": "llama.cpp server (local)",
+                                                    "value": BACKEND_LLAMACPP,
+                                                },
+                                            ],
+                                            value=BACKEND_OPENROUTER,
+                                            inline=True,
+                                            className="mb-2",
+                                        ),
+                                        dbc.Label("Base URL"),
+                                        dbc.Input(
+                                            id="base-url-input",
+                                            type="text",
+                                            value=DEFAULT_OPENROUTER_BASE_URL,
+                                            placeholder="https://openrouter.ai/api/v1",
+                                        ),
+                                        html.Div(
+                                            id="base-url-help",
+                                            className="small text-muted mb-2",
+                                        ),
+                                        dbc.Label("API key"),
+                                        dbc.Input(
+                                            id="api-key-input",
+                                            type="password",
+                                            placeholder="Required for OpenRouter; optional for llama.cpp",
+                                        ),
+                                        dbc.Label("LLM model", className="mt-2"),
                                         dbc.Select(
                                             id="llm-model-select",
-                                            options=[
-                                                {"label": m, "value": m}
-                                                for m in DEFAULT_MODELS
-                                            ],
-                                            value=DEFAULT_MODELS[0],
+                                            value=DEFAULT_LLM_MODEL,
                                         ),
                                         dbc.Label("Embedding model", className="mt-2"),
                                         dbc.Select(
                                             id="embed-model-select",
-                                            options=[
-                                                {"label": m, "value": m}
-                                                for m in DEFAULT_EMBED_MODELS
-                                            ],
-                                            value=DEFAULT_EMBED_MODELS[0],
+                                            value=DEFAULT_EMBED_MODEL,
                                         ),
                                         dbc.Label("Epochs", className="mt-2"),
                                         dbc.Input(
@@ -181,7 +240,7 @@ app.layout = dbc.Container(
                                         [
                                             dbc.Input(
                                                 id="chat-input",
-                                                placeholder="Ask a question...",
+                                                placeholder="Ask a question about your data...",
                                                 debounce=True,
                                             ),
                                             dbc.Button(
@@ -227,6 +286,35 @@ def cache_uploaded_file(contents, filename):
 
 
 @app.callback(
+    Output("base-url-input", "value"),
+    Output("base-url-help", "children"),
+    Output("llm-model-select", "options"),
+    Output("llm-model-select", "value"),
+    Output("embed-model-select", "options"),
+    Output("embed-model-select", "value"),
+    Input("backend-select", "value"),
+)
+def on_backend_change(backend):
+    if backend == BACKEND_LLAMACPP:
+        return (
+            DEFAULT_LLAMACPP_BASE_URL,
+            "Point at a running llama-server (start with --embedding for embeddings).",
+            LLAMACPP_LLM_OPTIONS,
+            DEFAULT_LLAMACPP_MODEL,
+            LLAMACPP_EMBED_OPTIONS,
+            DEFAULT_LLAMACPP_MODEL,
+        )
+    return (
+        DEFAULT_OPENROUTER_BASE_URL,
+        "Override only if you proxy OpenRouter behind a private gateway.",
+        OPENROUTER_LLM_OPTIONS,
+        DEFAULT_LLM_MODEL,
+        OPENROUTER_EMBED_OPTIONS,
+        DEFAULT_EMBED_MODEL,
+    )
+
+
+@app.callback(
     Output("log-output", "children"),
     Output("init-rag-button", "disabled"),
     Output("init-status", "children"),
@@ -249,18 +337,52 @@ def update_logs(_n):
     return log_children, busy, status
 
 
+def _resolve_credentials(backend: str, base_url: str, api_key: str):
+    """Pick the actual base URL and API key for the chosen backend."""
+    if backend == BACKEND_LLAMACPP:
+        resolved_url = base_url.strip() or os.environ.get(
+            "LLAMACPP_BASE_URL", DEFAULT_LLAMACPP_BASE_URL
+        )
+        resolved_key = (
+            api_key.strip()
+            or os.environ.get("LLAMACPP_API_KEY")
+            or "sk-no-key-required"
+        )
+    else:
+        resolved_url = base_url.strip() or os.environ.get(
+            "OPENROUTER_BASE_URL", DEFAULT_OPENROUTER_BASE_URL
+        )
+        resolved_key = api_key.strip() or os.environ.get("OPENROUTER_API_KEY", "")
+        if not resolved_key:
+            raise RuntimeError(
+                "OpenRouter requires an API key. Paste it into the API key "
+                "field or set the OPENROUTER_API_KEY environment variable."
+            )
+    return resolved_url, resolved_key
+
+
 def _run_rag_initialization(
     content_string: str,
     epochs: int,
+    backend: str,
+    base_url: str,
+    api_key: str,
     llm_model: str,
     embed_model: str,
 ) -> None:
     """Worker thread: build a fresh SpinRAG and publish it under the lock."""
     global rag, init_in_progress
     try:
+        resolved_url, resolved_key = _resolve_credentials(backend, base_url, api_key)
+        _append_log(
+            f"Starting initialization on backend={backend} base_url={resolved_url}"
+        )
         new_rag = SpinRAG(
             content=content_string,
             n_epochs=epochs,
+            backend=backend,
+            base_url=resolved_url,
+            api_key=resolved_key,
             llm_model=llm_model,
             embed_model=embed_model,
             logger_callback=_append_log,
@@ -280,11 +402,23 @@ def _run_rag_initialization(
     Input("init-rag-button", "n_clicks"),
     State("file-store", "data"),
     State("epochs-input", "value"),
+    State("backend-select", "value"),
+    State("base-url-input", "value"),
+    State("api-key-input", "value"),
     State("llm-model-select", "value"),
     State("embed-model-select", "value"),
     prevent_initial_call=True,
 )
-def initialize_rag(n_clicks, content, epochs, llm_model, embed_model):
+def initialize_rag(
+    n_clicks,
+    content,
+    epochs,
+    backend,
+    base_url,
+    api_key,
+    llm_model,
+    embed_model,
+):
     global init_in_progress
     if not n_clicks:
         return no_update
@@ -304,10 +438,27 @@ def initialize_rag(n_clicks, content, epochs, llm_model, embed_model):
         epochs_int = 3
     threading.Thread(
         target=_run_rag_initialization,
-        args=(content, epochs_int, llm_model, embed_model),
+        args=(
+            content,
+            epochs_int,
+            backend,
+            base_url or "",
+            api_key or "",
+            llm_model,
+            embed_model,
+        ),
         daemon=True,
     ).start()
     return n_clicks
+
+
+def _answer_with_llm(llm_model: str, api_key: str, base_url: str, prompt: str) -> str:
+    client = OpenAI(api_key=api_key, base_url=base_url)
+    resp = client.chat.completions.create(
+        model=llm_model,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    return resp.choices[0].message.content or ""
 
 
 @app.callback(
@@ -318,9 +469,21 @@ def initialize_rag(n_clicks, content, epochs, llm_model, embed_model):
     State("chat-input", "value"),
     State("chat-store", "data"),
     State("llm-model-select", "value"),
+    State("backend-select", "value"),
+    State("base-url-input", "value"),
+    State("api-key-input", "value"),
     prevent_initial_call=True,
 )
-def update_chat(n_clicks, n_submit, user_input, chat_history, model):
+def update_chat(
+    n_clicks,
+    n_submit,
+    user_input,
+    chat_history,
+    llm_model,
+    backend,
+    base_url,
+    api_key,
+):
     if not (n_clicks or n_submit) or not (user_input and user_input.strip()):
         return no_update, no_update
 
@@ -341,7 +504,7 @@ def update_chat(n_clicks, n_submit, user_input, chat_history, model):
         return chat_history, ""
 
     try:
-        llm = _OllamaLLM(model=model)
+        resolved_url, resolved_key = _resolve_credentials(backend, base_url, api_key)
         prompt = (
             "You are answering with the help of a restored knowledge-base "
             "fragment. Stay faithful to the context; if the answer is not in "
@@ -349,7 +512,7 @@ def update_chat(n_clicks, n_submit, user_input, chat_history, model):
             f"Context: {rag_response}\n\n"
             f"Question: {user_input.strip()}"
         )
-        llm_response = llm.invoke(prompt)
+        llm_response = _answer_with_llm(llm_model, resolved_key, resolved_url, prompt)
     except Exception as exc:
         llm_response = f"LLM error: {exc}\n\nRetrieved context:\n{rag_response}"
 

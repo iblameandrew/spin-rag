@@ -1,17 +1,23 @@
-
-
-*   Mars Aries - Mars Aries | **The Rite of First Blood:** A berserker's duel where both combatants are compelled to attack relentlessly until one falls, with the victor absorbing the raw life force of the defeated.
-*   Mars Aries - Venus Taurus | **The Gilded War-Horn:** An artifact that summons a phantom bull made of pure gold, which charges enemy lines and shatters fortifications, but requires a significant treasure offering to be used.
-*   Mars Aries - Mercury Gemini | **The Twin-Blade Feint:** A combat style that uses a flurry of deceptive attacks and witty taunts to create an opening for a single, decisive strike.
-*   Mars Aries - Moon Cancer | **The Hearth-Guard's Vow:** A paladin's sacred oath that grants them invulnerability as long as they are physically defending their designated home or family.
-*   Mars Aries - Sun Leo | **The Arena of Ascended Champions:** A mythical battleground where mortals can challenge legendary heroes. Victory grants a spark of their divine authority and charisma.
-*   Mars Aries - Mercury Virgo | **The Flawless Assault:** A battle trance that allows the warrior to perceive and strike at the microscopic weaknesses in any armor or defense.
-*   Mars Aries - Venus Libra | **The Duelist's Challenge:** A spell that creates a pocket dimension where two combatants are forced into a fair, one-on-one fight, with the loser honor-bound to serve the victor for a day.
-*   Mars Aries - Pluto Scorpio | **The Blood-Forged Vendetta:** A curse that links the caster's life force to their sworn enemy. Any wound one receives is mirrored on the other.
-*   Mars Aries - Jupiter Sagittarius | **The Pioneer's Crusade:** An inspiring battle cry that grants allies immense courage and speed when venturing into uncharted or hostile territory.
-*   Mars Aries - Saturn Capricorn | **The Unstoppable Siege Engine:** A massive, slow-moving war machine built with ancient precision, capable of leveling any structure but requiring immense discipline and resources to operate.
-*   Mars Aries - Uranus Aquarius | **The Spark of Rebellion:** An ability that allows a single warrior to inspire a downtrodden populace into a sudden, chaotic uprising against their oppressors.
-*   Mars Aries - Neptune Pisces | **The Charge of the Phantom Brigade:** A desperate spell that summons spectral warriors from the caster's own lifeblood, who fight with the fury of the already-lost.
-*   Jupiter Aries - Neptune Pisce
-* Pluto Aquarius -
-pluto
+Invoice 2026-Q1-001 | Vendor: CloudHost Inc. | Period: 2026-Q1 | Amount: $12,450.00 | Status: paid | Notes: Annual hosting renewal
+Expense 2026-01-002 | Vendor: Office Supplies Co. | Period: 2026-01 | Amount: $487.32 | Status: pending | Category: supplies
+Revenue 2026-Q1-003 | Client: Acme Corp. | Period: 2026-Q1 | Amount: $45,200.00 | Status: received | Product: Consulting | PO: 2026-0007
+Payroll 2026-01-004 | Period: 2026-01 | Gross: $82,300.00 | Tax: $19,840.00 | Net: $62,460.00 | Status: processed | Department: engineering
+Invoice 2026-Q1-005 | Vendor: AWS | Period: 2026-Q1 | Amount: $8,930.45 | Status: paid | Notes: Compute and storage
+Revenue 2026-Q1-006 | Client: Globex Industries | Period: 2026-Q1 | Amount: $128,000.00 | Status: received | Product: Platform license | Contract: GLOBEX-2025-114
+Expense 2026-02-007 | Vendor: WeWork | Period: 2026-02 | Amount: $18,400.00 | Status: paid | Category: rent
+Revenue 2026-Q1-008 | Client: Initech | Period: 2026-Q1 | Amount: $32,750.00 | Status: receivable | Product: Implementation services
+Invoice 2026-Q1-009 | Vendor: Datadog | Period: 2026-Q1 | Amount: $3,120.00 | Status: paid | Notes: Observability
+Payroll 2026-02-010 | Period: 2026-02 | Gross: $82,300.00 | Tax: $19,840.00 | Net: $62,460.00 | Status: processed | Department: engineering
+Expense 2026-02-011 | Vendor: Slack | Period: 2026-02 | Amount: $2,640.00 | Status: paid | Category: saas
+Revenue 2026-Q1-012 | Client: Hooli | Period: 2026-Q1 | Amount: $87,500.00 | Status: received | Product: Annual subscription
+Invoice 2026-Q1-013 | Vendor: GitHub | Period: 2026-Q1 | Amount: $1,290.00 | Status: paid | Notes: Team plan
+Expense 2026-03-014 | Vendor: AWS | Period: 2026-03 | Amount: $9,210.10 | Status: pending | Notes: Compute and storage
+Revenue 2026-Q1-015 | Client: Pied Piper | Period: 2026-Q1 | Amount: $14,800.00 | Status: receivable | Product: Consulting
+Expense 2026-03-016 | Vendor: Lyft | Period: 2026-03 | Amount: $942.55 | Status: pending | Category: travel
+Payroll 2026-03-017 | Period: 2026-03 | Gross: $82,300.00 | Tax: $19,840.00 | Net: $62,460.00 | Status: processed | Department: engineering
+Revenue 2026-Q1-018 | Client: Globex Industries | Period: 2026-Q1 | Amount: $44,000.00 | Status: received | Product: Add-on services | Contract: GLOBEX-2025-114
+Acme Corp. -
+Consulting
+Vendor: Initech | Period: 2026 | Type: revenue
+Datadog - observability
+Pied Piper

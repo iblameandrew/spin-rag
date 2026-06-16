@@ -1,4 +1,6 @@
-<img width="1024" height="1024" alt="image" src="https://github.com/user-attachments/assets/873489e9-28cc-404d-b9d0-231bf82dcc4a" />
+<p align="center">
+  <img src="assets/banner.jpg" alt="SpinRAG — typed, self-evolving knowledge graph RAG for damaged business records" width="100%" />
+</p>
 
 # SpinRAG
 

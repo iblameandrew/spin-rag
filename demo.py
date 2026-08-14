@@ -30,7 +30,6 @@ from spin_rag import (
     SpinRAG,
 )
 
-
 # --- App initialization -----------------------------------------------------
 
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.CYBORG])
@@ -206,9 +205,7 @@ app.layout = dbc.Container(
                                             color="primary",
                                             className="mt-3 w-100",
                                         ),
-                                        html.Div(
-                                            id="init-status", className="small mt-2"
-                                        ),
+                                        html.Div(id="init-status", className="small mt-2"),
                                     ]
                                 ),
                             ]
@@ -325,9 +322,7 @@ def update_logs(_n):
         snapshot = list(log_stream[-_LOG_DISPLAY_LIMIT:])
         busy = init_in_progress
         ready = rag is not None
-    log_children = [
-        html.P(line, style={"margin": 0, "fontSize": "12px"}) for line in snapshot
-    ]
+    log_children = [html.P(line, style={"margin": 0, "fontSize": "12px"}) for line in snapshot]
     if busy:
         status = "⏳ Initializing... (this can take a while on first run)"
     elif ready:
@@ -343,11 +338,7 @@ def _resolve_credentials(backend: str, base_url: str, api_key: str):
         resolved_url = base_url.strip() or os.environ.get(
             "LLAMACPP_BASE_URL", DEFAULT_LLAMACPP_BASE_URL
         )
-        resolved_key = (
-            api_key.strip()
-            or os.environ.get("LLAMACPP_API_KEY")
-            or "sk-no-key-required"
-        )
+        resolved_key = api_key.strip() or os.environ.get("LLAMACPP_API_KEY") or "sk-no-key-required"
     else:
         resolved_url = base_url.strip() or os.environ.get(
             "OPENROUTER_BASE_URL", DEFAULT_OPENROUTER_BASE_URL
@@ -374,9 +365,7 @@ def _run_rag_initialization(
     global rag, init_in_progress
     try:
         resolved_url, resolved_key = _resolve_credentials(backend, base_url, api_key)
-        _append_log(
-            f"Starting initialization on backend={backend} base_url={resolved_url}"
-        )
+        _append_log(f"Starting initialization on backend={backend} base_url={resolved_url}")
         new_rag = SpinRAG(
             content=content_string,
             n_epochs=epochs,
@@ -535,4 +524,7 @@ def display_chat(chat_history):
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    host = os.environ.get("HOST", "127.0.0.1")
+    port = int(os.environ.get("PORT", "8050"))
+    debug = os.environ.get("DASH_DEBUG", "0") == "1"
+    app.run(debug=debug, host=host, port=port)

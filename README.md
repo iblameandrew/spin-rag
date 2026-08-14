@@ -6,7 +6,7 @@
 
 > A typed, self-evolving knowledge graph for RAG over **damaged business records** — fiscal ledgers, OCR dumps, half-finished wiki entries, ticket exports. SpinRAG treats broken fragments as the *input signal* and uses the LLM to repair the graph into a self-consistent retrieval index.
 
-`v0.1.0` — first official release. OpenAI-SDK compatible: ships with **OpenRouter** and a self-hosted **llama.cpp** server as first-class backends.
+`v0.2.0` — library + offline test suite + Docker/CI. OpenAI-SDK compatible: **OpenRouter** and a self-hosted **llama.cpp** server are first-class backends.
 
 ---
 
@@ -150,12 +150,14 @@ The verbose log preserves every decision; the graph preserves every edge.
 ```bash
 git clone https://github.com/iblameandrew/spin-rag.git
 cd spin-rag
-pip install -r requirements.txt
-pip install -e .
+pip install -e ".[app]"
+# tests / lint: pip install -e ".[dev]"
 
 cp .env.example .env
 # Edit .env to set OPENROUTER_API_KEY (if using OpenRouter).
 ```
+
+`requirements.txt` remains a flat pin of the runtime stack.
 
 ### Programmatic usage
 
@@ -209,6 +211,49 @@ python demo.py
 
 Open <http://127.0.0.1:8050>, upload a `.txt`, pick your backend, paste the API key (if any), pick your models and epoch count, click **Initialize RAG**, then chat. The left panel streams the verbose evolution log in real time.
 
+### Tests
+
+The default suite is **offline** — it injects a fake OpenAI-compatible backend and never calls OpenRouter or llama.cpp.
+
+```bash
+pip install -e ".[dev]"
+pytest
+pytest --cov --cov-report=term-missing
+ruff check spin_rag tests demo.py
+```
+
+`@pytest.mark.live` is reserved for optional network tests and is excluded by default.
+
+For unit tests you can inject a backend and skip auto-index:
+
+```python
+from spin_rag import SpinRAG, BACKEND_LLAMACPP
+
+rag = SpinRAG(
+    content=corpus,
+    n_epochs=2,
+    backend=BACKEND_LLAMACPP,
+    backend_instance=my_fake_backend,  # .chat() / .embed()
+    auto_init=True,
+)
+```
+
+### Docker
+
+```bash
+# Dash UI; point at a llama-server on the host
+docker compose up app --build
+
+# Offline test image
+docker compose run --rm test
+```
+
+The app container defaults `LLAMACPP_BASE_URL` to `http://host.docker.internal:8080/v1`. Optional compose profile `llm` starts `ghcr.io/ggml-org/llama.cpp:server` and expects `./models/model.gguf`.
+
+### CI
+
+GitHub Actions (`.github/workflows/ci.yml`) runs Ruff, pytest on Python 3.11/3.12, and builds the `test` and `runtime` Docker stages. Pushing a `v*` tag publishes `ghcr.io/iblameandrew/spin-rag`.
+
 ---
 
 ## Public API
@@ -233,6 +278,8 @@ from spin_rag import (
 - `base_url` — override the default base URL. `None` means use the backend's default (`https://openrouter.ai/api/v1` or `http://localhost:8080/v1`) or whatever is set in the relevant environment variable.
 - `api_key` — API key. `None` means read from the relevant environment variable.
 - `logger_callback` — optional `Callable[[str], None]` for streaming logs (used by `demo.py`).
+- `backend_instance` — optional object with `chat` / `embed` (tests inject a fake; no network).
+- `auto_init` — if `False`, skip classification/evolution until `initialize_index()`.
 
 **`SpinRAG.query(query_text, reorganize_graph=False) -> str`** — returns the restored answer. If `reorganize_graph=True`, the query and its response are added back into the graph as new nodes with provenance edges, so subsequent queries can see them.
 
@@ -260,6 +307,10 @@ Public dataclasses: `Document(id, text, spin, embeddings, epoch_history, metadat
 ---
 
 ## Changelog
+
+### v0.2.0 — 2026-08-14
+
+Library-first packaging pass: injectable backend for offline tests, extensive pytest suite, multi-stage Docker image, compose file, and GitHub Actions CI/release. Public API now also exports `DEFAULT_LLAMACPP_MODEL`, `DEFAULT_OPENROUTER_BASE_URL`, `parse_spin`, `clean_llm_output`, and `cosine_similarity`. Dash demo binds `HOST`/`PORT` for containers.
 
 ### v0.1.0 — 2026-06-06 (first official release)
 

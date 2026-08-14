@@ -20,7 +20,7 @@ with open(
 
 setup(
     name="spin-rag",
-    version="0.1.0",
+    version="0.2.0",
     author="iblameandrew",
     author_email="iblameandrew@users.noreply.github.com",
     description=(

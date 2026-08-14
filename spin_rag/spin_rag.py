@@ -34,8 +34,8 @@ from __future__ import annotations
 
 import os
 import re
-import uuid
 import threading
+import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
@@ -107,6 +107,14 @@ def _clean_llm_output(text: Any) -> str:
     return cleaned
 
 
+def parse_spin(text: Any, default: SpinType = SpinType.TOP) -> SpinType:
+    """Extract a SpinType from free-form LLM text. Defaults to TOP."""
+    match = _SPIN_PATTERN.search(_clean_llm_output(text).upper())
+    if match:
+        return SpinType[match.group(1).upper()]
+    return default
+
+
 class _Backend:
     """Thin wrapper around the OpenAI SDK pointed at an OpenAI-compatible server.
 
@@ -124,13 +132,10 @@ class _Backend:
     ):
         if backend not in _VALID_BACKENDS:
             raise ValueError(
-                f"Unknown backend: {backend!r}. "
-                f"Expected one of {', '.join(_VALID_BACKENDS)}."
+                f"Unknown backend: {backend!r}. Expected one of {', '.join(_VALID_BACKENDS)}."
             )
         self.backend = backend
-        self.app_name = app_name or os.environ.get(
-            "OPENROUTER_APP_NAME", DEFAULT_APP_NAME
-        )
+        self.app_name = app_name or os.environ.get("OPENROUTER_APP_NAME", DEFAULT_APP_NAME)
 
         if backend == BACKEND_OPENROUTER:
             self.base_url = base_url or os.environ.get(
@@ -153,9 +158,7 @@ class _Backend:
             )
             # llama.cpp server's /v1 endpoint is unauthenticated by default,
             # but the OpenAI SDK requires a non-empty key string.
-            self.api_key = api_key or os.environ.get(
-                "LLAMACPP_API_KEY", "sk-no-key-required"
-            )
+            self.api_key = api_key or os.environ.get("LLAMACPP_API_KEY", "sk-no-key-required")
             headers = {}
 
         self.headers = headers
@@ -229,6 +232,8 @@ class SpinRAG:
         site_url: Optional[str] = None,
         config: Optional[Dict] = None,
         logger_callback: Optional[Callable[[str], None]] = None,
+        backend_instance: Any = None,
+        auto_init: bool = True,
     ):
         self.content = content
         self.n_epochs = int(n_epochs) if n_epochs is not None else 0
@@ -244,7 +249,7 @@ class SpinRAG:
             if embed_model == DEFAULT_EMBED_MODEL:
                 self.embed_model = DEFAULT_LLAMACPP_MODEL
 
-        self.backend = _Backend(
+        self.backend = backend_instance or _Backend(
             backend=backend,
             base_url=base_url,
             api_key=api_key,
@@ -263,11 +268,12 @@ class SpinRAG:
         self._embed_lock = threading.Lock()
 
         self._log(
-            f"🔌 Backend: {backend} (base_url={self.backend.base_url}, "
+            f"🔌 Backend: {backend} (base_url={getattr(self.backend, 'base_url', 'injected')}, "
             f"llm={self.llm_model}, embed={self.embed_model})"
         )
 
-        self.initialize_index()
+        if auto_init:
+            self.initialize_index()
 
     # ------------------------------------------------------------------ utils
 
@@ -296,11 +302,7 @@ class SpinRAG:
             return cached
         try:
             vecs = self.backend.embed(self.embed_model, [key])
-            vec = (
-                np.asarray(vecs[0], dtype=np.float64)
-                if vecs
-                else np.zeros(1, dtype=np.float64)
-            )
+            vec = np.asarray(vecs[0], dtype=np.float64) if vecs else np.zeros(1, dtype=np.float64)
         except Exception as exc:
             self._log(
                 f"⚠️ Embedding failed for text of length {len(key)}: {exc}. "
@@ -345,11 +347,7 @@ class SpinRAG:
         except Exception as exc:
             self._log(f"⚠️ Spin classification failed ({exc}); defaulting to TOP.")
             return SpinType.TOP
-        response = _clean_llm_output(raw).upper()
-        match = _SPIN_PATTERN.search(response)
-        if match:
-            return SpinType[match.group(1).upper()]
-        return SpinType.TOP
+        return parse_spin(raw)
 
     # ------------------------------------------------------------ initialize
 
@@ -400,8 +398,7 @@ class SpinRAG:
 
         catalyst_embedding = self._embed(catalyst_doc.text)
         similarities = [
-            _cosine_similarity(catalyst_embedding, self._embed(doc.text))
-            for doc in base_docs
+            _cosine_similarity(catalyst_embedding, self._embed(doc.text)) for doc in base_docs
         ]
 
         if not similarities:
@@ -431,9 +428,7 @@ class SpinRAG:
             epoch_history=[{"epoch": epoch, "spin": spin.value, "reason": reason}],
         )
         for src_id, label in sources:
-            self.graph["edges"].append(
-                {"source": src_id, "target": new_doc_id, "label": label}
-            )
+            self.graph["edges"].append({"source": src_id, "target": new_doc_id, "label": label})
         return new_doc
 
     def evolve_epochs(self):
@@ -492,8 +487,7 @@ class SpinRAG:
                 if not closest_top_doc:
                     continue
                 self._log(
-                    f"  - Resonance: {closest_top_doc.id} (TOP) with "
-                    f"{right_doc.id} (RIGHT) -> TOP"
+                    f"  - Resonance: {closest_top_doc.id} (TOP) with {right_doc.id} (RIGHT) -> TOP"
                 )
                 prompt = (
                     f"{self._RESTORATION_GUARDRAIL}\n\n"
@@ -519,9 +513,7 @@ class SpinRAG:
 
             # Rule: RIGHT (catalyst) + BOTTOM (base) -> new TOP
             for right_doc in right_catalysts:
-                closest_bottom_doc = self._find_closest_doc(
-                    right_doc, current_bottom_docs
-                )
+                closest_bottom_doc = self._find_closest_doc(right_doc, current_bottom_docs)
                 if not closest_bottom_doc:
                     continue
                 self._log(
@@ -552,9 +544,7 @@ class SpinRAG:
 
             # Rule: LEFT (catalyst) + BOTTOM (base) -> new BOTTOM
             for left_doc in left_catalysts:
-                closest_bottom_doc = self._find_closest_doc(
-                    left_doc, current_bottom_docs
-                )
+                closest_bottom_doc = self._find_closest_doc(left_doc, current_bottom_docs)
                 if not closest_bottom_doc:
                     continue
                 self._log(
@@ -584,9 +574,7 @@ class SpinRAG:
                     self._log(f"    - Created new document {new_doc.text} (BOTTOM)")
 
             if not next_gen_top_docs and not next_gen_bottom_docs:
-                self._log(
-                    "  - No new documents produced in this epoch. Halting evolution."
-                )
+                self._log("  - No new documents produced in this epoch. Halting evolution.")
                 break
 
             new_docs_this_epoch = next_gen_top_docs + next_gen_bottom_docs
@@ -627,23 +615,18 @@ class SpinRAG:
         top_spin_docs = [
             d
             for d in self.documents
-            if d.spin == SpinType.TOP
-            and d.embeddings is not None
-            and len(d.embeddings) > 0
+            if d.spin == SpinType.TOP and d.embeddings is not None and len(d.embeddings) > 0
         ]
         if not top_spin_docs:
             return "No TOP spin documents available for querying."
 
         similarities = [
-            (doc, _cosine_similarity(query_embedding, doc.embeddings))
-            for doc in top_spin_docs
+            (doc, _cosine_similarity(query_embedding, doc.embeddings)) for doc in top_spin_docs
         ]
         similarities.sort(key=lambda x: x[1], reverse=True)
 
         closest_doc, similarity = similarities[0]
-        self._log(
-            f"  - Closest TOP document: {closest_doc.id} (Similarity: {similarity:.4f})"
-        )
+        self._log(f"  - Closest TOP document: {closest_doc.id} (Similarity: {similarity:.4f})")
 
         query_doc_id = f"doc_{uuid.uuid4()}"
         if reorganize_graph:
@@ -799,8 +782,7 @@ class SpinRAG:
             return None, 0.0
 
         similarities = [
-            _cosine_similarity(query_embedding, self._embed(doc.text))
-            for doc in target_docs
+            _cosine_similarity(query_embedding, self._embed(doc.text)) for doc in target_docs
         ]
         if not similarities:
             return None, 0.0
@@ -816,9 +798,7 @@ class SpinRAG:
             elif edge.get("target") == doc_id:
                 adjacent_ids.add(edge.get("source"))
 
-        return [
-            self.doc_map[adj_id] for adj_id in adjacent_ids if adj_id in self.doc_map
-        ]
+        return [self.doc_map[adj_id] for adj_id in adjacent_ids if adj_id in self.doc_map]
 
     # --------------------------------------------------------------- logging
 
@@ -838,4 +818,9 @@ __all__ = [
     "DEFAULT_LLM_MODEL",
     "DEFAULT_EMBED_MODEL",
     "DEFAULT_LLAMACPP_BASE_URL",
+    "DEFAULT_LLAMACPP_MODEL",
+    "DEFAULT_OPENROUTER_BASE_URL",
+    "parse_spin",
+    "_clean_llm_output",
+    "_cosine_similarity",
 ]
